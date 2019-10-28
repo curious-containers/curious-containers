@@ -1,4 +1,6 @@
-# Curious Containers
+# CC-Core
+
+CC-Core is part of the Curious Containers project. It contains shared code of the CC-FAICE and CC-Agency packages.
 
 For more information please refer to the Curious Containers [documentation](https://www.curious-containers.cc/).
 

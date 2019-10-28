@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "cc-agency"
+version = "8.1.0"
+authors = ["Christoph Jansen <Christoph.Jansen@htw-berlin.de>", "Bruno Schilling <Bruno.Schilling@student.htw-berlin.de>"]
+license = "AGPL-3.0"
+readme = "README.md"
+repository = "https://github.com/curious-containers/cc-agency"
+homepage = "https://www.curious-containers.cc/"
+description = "CC-Agency is part of the Curious Containers project. It connects to a cluster of docker-engines for the distributed execution of reproducible data-driven experiments defined in the RED format."
+
+[tool.poetry.dependencies]
+python = "^3.5"
+flask = "^1.0"
+pyzmq = "^17.0"
+pymongo = "^3.7"
+cryptography = "^2.2"
+cc-core = "~8.1"
+
+[tool.poetry.dev-dependencies]
+
+[tool.poetry.scripts]
+ccagency-controller = 'cc_agency.controller.main:main'
+ccagency-trustee = 'cc_agency.trustee.main:main'
+ccagency = 'cc_agency.tools.main:main'

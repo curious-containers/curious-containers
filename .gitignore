@@ -1,0 +1,7 @@
+.idea
+__pycache__
+dist
+pip-wheel-metadata
+*.egg-info
+.pytest_cache
+outputs

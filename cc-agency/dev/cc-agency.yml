@@ -1,0 +1,22 @@
+broker:
+  auth:
+    num_login_attempts: 3
+    block_for_seconds: 30
+    tokens_valid_for_seconds: 86400  # 24 h
+
+controller:
+  bind_socket_path: "~/.cache/cc-agency-controller.sock"
+  docker:
+    nodes:
+      node1:
+        base_url: unix://var/run/docker.sock
+
+trustee:
+  internal_url: 'http://127.0.0.1:6001'
+  username: "cctrustee"
+  password: "SECRET"
+
+mongo:
+  db: "ccagency"
+  username: "ccadmin"
+  password: "SECRET"
