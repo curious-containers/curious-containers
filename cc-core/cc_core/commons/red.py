@@ -4,7 +4,7 @@ import os
 import jsonschema
 from jsonschema.exceptions import ValidationError
 
-from cc_core.commons.red_to_blue import InputType, OutputType
+from cc_core.commons.red_to_restricted_red import InputType, OutputType
 from cc_core.version import RED_VERSION
 from cc_core.commons.schemas.red import red_schema
 from cc_core.commons.exceptions import ArgumentError, RedValidationError, CWLSpecificationError

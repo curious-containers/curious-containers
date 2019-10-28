@@ -13,13 +13,13 @@ from uuid import uuid4
 
 from cc_core.commons.docker_utils import create_batch_archive
 from cc_core.commons.engines import engine_validation
-from cc_core.commons.exceptions import print_exception, exception_format, AgentError, JobExecutionError
+from cc_core.commons.exceptions import print_exception, exception_format, AgentError, JobExecutionError, TemplateError
 from cc_core.commons.files import load_and_read, dump_print
 from cc_core.commons.gpu_info import get_gpu_requirements, match_gpus, InsufficientGPUError
 from cc_core.commons.red import red_validation
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR, CONTAINER_AGENT_PATH, \
     CONTAINER_BLUE_FILE_PATH
-from cc_core.commons.templates import get_secret_values, normalize_keys
+from cc_core.commons.templates import get_secret_values, normalize_keys, get_template_keys
 
 from cc_faice.commons.templates import complete_red_templates
 from cc_faice.commons.docker import env_vars, DockerManager
@@ -29,113 +29,33 @@ DESCRIPTION = 'Run an experiment as described in a REDFILE with ccagent red in a
 PYTHON_INTERPRETER = 'python3'
 
 
-# noinspection PyPep8Naming
-def IntegerSet(s):
-    return set(int(i) for i in s.split(','))
-
-
-def attach_args(parser):
-    parser.add_argument(
-        'red_file', action='store', type=str, metavar='REDFILE',
-        help='REDFILE (json or yaml) containing an experiment description as local PATH or http URL.'
-    )
-    parser.add_argument(
-        '-o', '--outputs', action='store_true',
-        help='Enable connectors specified in the RED FILE outputs section.'
-    )
-    parser.add_argument(
-        '-d', '--debug', action='store_true',
-        help='Write debug info, including detailed exceptions, to stdout.'
-    )
-    parser.add_argument(
-        '--format', action='store', type=str, metavar='FORMAT', choices=['json', 'yaml', 'yml'], default='yaml',
-        help='Specify FORMAT for generated data as one of [json, yaml, yml]. Default is yaml.'
-    )
-    parser.add_argument(
-        '--disable-pull', action='store_true',
-        help='Do not try to pull Docker images.'
-    )
-    parser.add_argument(
-        '--leave-container', action='store_true',
-        help='Do not delete Docker container used by jobs after they exit.'
-    )
-    parser.add_argument(
-        '--preserve-environment', action='append', type=str, metavar='ENVVAR',
-        help='Preserve specific environment variables when running container. May be provided multiple times.'
-    )
-    parser.add_argument(
-        '--non-interactive', action='store_true',
-        help='Do not ask for RED variables interactively.'
-    )
-    parser.add_argument(
-        '--insecure', action='store_true',
-        help='Enable SYS_ADMIN capabilities in container, if REDFILE contains connectors performing FUSE mounts.'
-    )
-    parser.add_argument(
-        '--keyring-service', action='store', type=str, metavar='KEYRING_SERVICE', default='red',
-        help='Keyring service to resolve template values, default is "red".'
-    )
-    parser.add_argument(
-        '--gpu-ids', type=IntegerSet, metavar='GPU_IDS',
-        help='Use the GPUs with the given GPU_IDS for this execution. GPU_IDS should be a comma separated list of '
-             'integers, like --gpu-ids "1,2,3".'
-    )
-
-
-def _get_commandline_args():
-    parser = ArgumentParser(description=DESCRIPTION)
-    attach_args(parser)
-    return parser.parse_args()
-
-
 class OutputMode(Enum):
     Connectors = 0
     Directory = 1
 
 
-def main():
-    args = _get_commandline_args()
-    if args.outputs:
-        output_mode = OutputMode.Connectors
-    else:
-        output_mode = OutputMode.Directory
-    result = run(**args.__dict__,
-                 output_mode=output_mode)
-
-    if args.debug:
-        dump_print(result, args.format)
-
-    if result['state'] != 'succeeded':
-        return 1
-
-    return 0
-
-
-def run(red_file,
-        disable_pull,
-        leave_container,
-        preserve_environment,
-        non_interactive,
-        insecure,
-        output_mode,
-        keyring_service,
-        gpu_ids,
-        **_
+def run(red_data,
+        disable_pull=False,
+        leave_container=False,
+        preserve_environment=None,
+        insecure=False,
+        output_mode=OutputMode.Connectors,
+        gpu_ids=None,
         ):
     """
     Executes a RED Experiment.
 
-    :param red_file: The path or URL to the RED File to execute
+    :param red_data: A dict containing red data that will be executed. This red data cannot contain template keys
     :param disable_pull: If True the docker image is not pulled from an registry
     :param leave_container: If set to True, the executed docker container will not be removed.
     :param preserve_environment: List of environment variables to preserve inside the docker container.
-    :param non_interactive: If True, unresolved template values are not asked interactively
     :param insecure: Allow insecure capabilities
     :param output_mode: Either Connectors or Directory. If Connectors, the blue agent will try to execute the output
                         connectors. If Directory faice will copy the output files into the host output directory.
-    :param keyring_service: The keyring service name to use for template substitution
     :param gpu_ids: A list of gpu ids, that should be used. If None all gpus are considered.
     :type gpu_ids: List[int] or None
+
+    :raise TemplateError: If template keys are found in the given red data
     """
 
     result = {
@@ -147,16 +67,14 @@ def run(red_file,
     secret_values = None
 
     try:
-        red_data = load_and_read(red_file, 'REDFILE')
-
         # validation
         red_validation(red_data, output_mode == OutputMode.Directory, container_requirement=True)
         engine_validation(red_data, 'container', ['docker'], optional=False)
 
+        check_for_template_keys(red_data)
+
         # templates and secrets
-        complete_red_templates(red_data, keyring_service, non_interactive)
         secret_values = get_secret_values(red_data)
-        normalize_keys(red_data)
 
         # process red data
         blue_batches = convert_red_to_restricted_red(red_data)
@@ -205,6 +123,25 @@ def run(red_file,
         result['state'] = 'failed'
 
     return result
+
+
+def check_for_template_keys(red_data):
+    """
+    Raises an TemplateError, if template keys are found in the given red data. Template keys should be resolved by the
+    faice client, before committing them to the faice execution engine.
+
+    :param red_data: The red data that is checked
+    :type red_data: dict
+
+    :raise TemplateError: If template keys are found in the given red_data
+    """
+    template_keys = set()
+    get_template_keys(red_data, template_keys)
+    if template_keys:
+        raise TemplateError(
+            'Found template keys in red_data. Please resolve them before committing to faice execution engine. '
+            'The following keys were found: "{}"'.format(', '.join(template_keys))
+        )
 
 
 def get_gpu_devices(docker_manager, gpu_ids):
