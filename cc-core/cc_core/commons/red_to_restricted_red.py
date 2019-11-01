@@ -64,7 +64,14 @@ def convert_red_to_restricted_red(red_data):
         resolved_cli_outputs = complete_input_references_in_outputs(cli_outputs, batch_inputs)
 
         # create restricted red batch
-        restricted_red_batch = create_restricted_red_batch(command, batch, resolved_cli_outputs, cli_stdout, cli_stderr)
+        restricted_red_batch = create_restricted_red_batch(
+            command=command,
+            batch=batch,
+            cli_inputs=cli_inputs,
+            cli_outputs=resolved_cli_outputs,
+            cli_stdout=cli_stdout,
+            cli_stderr=cli_stderr
+        )
         restricted_red_batches.append(restricted_red_batch)
 
     return restricted_red_batches
