@@ -89,10 +89,6 @@ class RedValidationError(Exception):
     pass
 
 
-class RedVariablesError(Exception):
-    pass
-
-
 class ConnectorError(Exception):
     pass
 
@@ -106,8 +102,4 @@ class AccessError(Exception):
 
 
 class ParsingError(Exception):
-    pass
-
-
-class TemplateError(Exception):
     pass

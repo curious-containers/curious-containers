@@ -7,7 +7,7 @@ from bson.objectid import ObjectId
 
 from cc_core.commons.red import red_validation
 from cc_core.commons.engines import engine_validation
-from cc_core.commons.templates import get_template_keys, get_secret_values, normalize_keys
+from cc_core.commons.red_secrets import get_template_keys, get_secret_values, normalize_keys
 from cc_core.commons.exceptions import exception_format
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red
 

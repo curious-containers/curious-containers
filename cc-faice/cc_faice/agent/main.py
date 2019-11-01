@@ -15,4 +15,5 @@ MODES = OrderedDict([
 
 
 def main():
-    cli_modes(SCRIPT_NAME, TITLE, DESCRIPTION, MODES)
+    raise DeprecationWarning('faice agent red is deprecated. Use faice exec with ccfaice execution engine instead.')
+    # cli_modes(SCRIPT_NAME, TITLE, DESCRIPTION, MODES)

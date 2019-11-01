@@ -8,10 +8,10 @@ from cc_core.commons.exceptions import print_exception, exception_format
 from cc_core.commons.files import load_and_read, dump_print
 from cc_core.commons.red import red_validation
 from cc_core.commons.engines import engine_validation
-from cc_core.commons.templates import normalize_keys, get_secret_values
+from cc_core.commons.red_secrets import normalize_keys, get_secret_values
 
 from cc_faice.agent.red.main import run as run_faice_agent_red, OutputMode
-from cc_faice.commons.templates import complete_red_templates
+from cc_faice.commons.templates import complete_red_variables
 
 DESCRIPTION = 'Execute experiment according to execution engine defined in REDFILE.'
 
@@ -48,6 +48,7 @@ def main():
     parser = ArgumentParser(description=DESCRIPTION)
     attach_args(parser)
     args = parser.parse_args()
+
     result = run(**args.__dict__, fmt=args.format)
 
     if args.debug:
@@ -118,7 +119,7 @@ def run(red_file, non_interactive, fmt, insecure, keyring_service, **_):
             )
             return result
 
-        complete_red_templates(red_data, keyring_service, non_interactive)
+        complete_red_variables(red_data, keyring_service, non_interactive)
 
         red_data_normalized = deepcopy(red_data)
         normalize_keys(red_data_normalized)

@@ -19,9 +19,9 @@ from cc_core.commons.gpu_info import get_gpu_requirements, match_gpus, Insuffici
 from cc_core.commons.red import red_validation
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR, CONTAINER_AGENT_PATH, \
     CONTAINER_BLUE_FILE_PATH
-from cc_core.commons.templates import get_secret_values, normalize_keys
+from cc_core.commons.red_secrets import get_secret_values, normalize_keys
 
-from cc_faice.commons.templates import complete_red_templates
+from cc_faice.commons.templates import complete_red_variables
 from cc_faice.commons.docker import env_vars, DockerManager
 
 DESCRIPTION = 'Run an experiment as described in a REDFILE with ccagent red in a container.'
@@ -154,7 +154,7 @@ def run(red_file,
         engine_validation(red_data, 'container', ['docker'], optional=False)
 
         # templates and secrets
-        complete_red_templates(red_data, keyring_service, non_interactive)
+        complete_red_variables(red_data, keyring_service, non_interactive)
         secret_values = get_secret_values(red_data)
         normalize_keys(red_data)
 
