@@ -1,4 +1,4 @@
-from cc_core.commons.red import check_keys_are_strings
+from red_val.red_validation import check_keys_are_strings
 from red_val.red_variables import is_protected_key
 
 

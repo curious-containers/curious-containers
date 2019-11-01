@@ -14,12 +14,11 @@ The following steps were performed for blue, but are NOT longer supported for re
 These steps are now performed by the agent
 """
 from copy import deepcopy
-from enum import Enum
 import os.path
 import uuid
 
 from cc_core.commons.cwl_types import InputType
-from cc_core.commons.exceptions import InvalidInputReference, RedSpecificationError
+from cc_core.commons.exceptions import InvalidInputReference
 from cc_core.commons.input_references import resolve_input_references
 
 CONTAINER_OUTPUT_DIR = '/cc/outputs'
@@ -129,81 +128,6 @@ def _outputs_contain_output_type(blue_batch_outputs, output_type):
         if output_value.get('class') == output_type:
             return True
     return False
-
-
-class OutputType:
-    class OutputCategory(Enum):
-        File = 0
-        Directory = 1
-        stdout = 2
-        stderr = 3
-
-    def __init__(self, output_category, is_optional):
-        self.output_category = output_category
-        self._is_optional = is_optional
-
-    @staticmethod
-    def from_string(s):
-        is_optional = s.endswith('?')
-        if is_optional:
-            s = s[:-1]
-
-        output_category = None
-        for oc in OutputType.OutputCategory:
-            if s == oc.name:
-                output_category = oc
-
-        if output_category is None:
-            raise RedSpecificationError('The given output type "{}" is not valid'.format(s))
-
-        if output_category == OutputType.OutputCategory.stdout and is_optional:
-            raise RedSpecificationError(
-                'The given output type is an optional stdout ("{}"), which is not valid'.format(s)
-            )
-        if output_category == OutputType.OutputCategory.stderr and is_optional:
-            raise RedSpecificationError(
-                'The given output type is an optional stderr ("{}"), which is not valid'.format(s)
-            )
-
-        return OutputType(output_category, is_optional)
-
-    def to_string(self):
-        return '{}{}'.format(
-            self.output_category.name,
-            '?' if self._is_optional else ''
-        )
-
-    def __repr__(self):
-        return self.to_string()
-
-    def __eq__(self, other):
-        return (self.output_category == other.output_category) and \
-               (self._is_optional == other.is_optional())
-
-    # noinspection PyMethodMayBeStatic
-    def is_array(self):
-        return False
-
-    def is_file(self):
-        return self.output_category == OutputType.OutputCategory.File
-
-    def is_directory(self):
-        return self.output_category == OutputType.OutputCategory.Directory
-
-    def is_stdout(self):
-        return self.output_category == OutputType.OutputCategory.stdout
-
-    def is_stderr(self):
-        return self.output_category == OutputType.OutputCategory.stderr
-
-    def is_stream(self):
-        """
-        Returns True, if this OutputType holds a stdout or stderr
-        """
-        return self.is_stdout() or self.is_stderr()
-
-    def is_optional(self):
-        return self._is_optional
 
 
 def complete_input_references_in_outputs(cli_outputs, inputs_to_reference):

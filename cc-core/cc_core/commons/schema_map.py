@@ -1,6 +1,6 @@
 from collections import OrderedDict
 
-from cc_core.commons.schemas.red import red_schema
+from red_val.red_schemas import red_schema
 from cc_core.commons.schemas.engines.container import container_engines
 from cc_core.commons.schemas.engines.execution import execution_engines
 

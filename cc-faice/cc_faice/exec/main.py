@@ -6,12 +6,12 @@ import requests
 
 from cc_core.commons.exceptions import print_exception, exception_format
 from cc_core.commons.files import load_and_read, dump_print
-from cc_core.commons.red import red_validation
 from cc_core.commons.engines import engine_validation
 from cc_core.commons.red_secrets import normalize_keys, get_secret_values
 
 from cc_faice.agent.red.main import run as run_faice_agent_red, OutputMode
 from cc_faice.commons.templates import complete_red_variables
+from red_val.red_validation import red_validation
 
 DESCRIPTION = 'Execute experiment according to execution engine defined in REDFILE.'
 

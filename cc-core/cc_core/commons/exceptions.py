@@ -73,19 +73,7 @@ class JobExecutionError(Exception):
     pass
 
 
-class CWLSpecificationError(Exception):
-    pass
-
-
 class JobSpecificationError(Exception):
-    pass
-
-
-class RedSpecificationError(Exception):
-    pass
-
-
-class RedValidationError(Exception):
     pass
 
 
