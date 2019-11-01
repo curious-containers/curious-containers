@@ -6,9 +6,10 @@ from jsonschema import ValidationError
 from red_val.exceptions import RedSpecificationError, RedValidationError, CWLSpecificationError
 from red_val.red_schemas import red_schema
 from red_val.red_types import InputType, OutputType
+from red_val.red_variables import get_variable_keys, RedVariableError
 
 
-def red_validation(red_data, ignore_outputs, container_requirement=False):
+def red_validation(red_data, ignore_outputs, container_requirement=False, allow_variables=True):
     """
     Checks the given red data. The process implements the following steps:
 
@@ -18,6 +19,7 @@ def red_validation(red_data, ignore_outputs, container_requirement=False):
     - match types of cli description and job values
     - validate listings given in connectors
     - validate container requirement
+    - check whether template keys are present, if they are not allowed
     - checks if globs do start with "/"
 
     Not checked anymore:
@@ -28,6 +30,7 @@ def red_validation(red_data, ignore_outputs, container_requirement=False):
     :param red_data: The red data to check
     :param ignore_outputs: Whether the outputs section should be ignored
     :param container_requirement: If True, this function checks, if there is a container section in the red file
+    :param allow_variables: Whether red variables are allowed in the given red data or not
     :raise RedValidationError, RedSpecificationError, CWLSpecificationError: If the red data is not valid
     """
     check_keys_are_strings(red_data)
@@ -48,6 +51,14 @@ def red_validation(red_data, ignore_outputs, container_requirement=False):
 
         # directory listings are not checked
         # cli_job_pair.check_directory_listing()
+
+    # check for forbidden variables
+    if not allow_variables:
+        variables = get_variable_keys(red_data)
+        if variables:
+            raise RedVariableError(
+                'Red variables are forbidden, but found the following: {}'.format([v.key for v in variables])
+            )
 
     if container_requirement:
         if not red_data.get('container'):

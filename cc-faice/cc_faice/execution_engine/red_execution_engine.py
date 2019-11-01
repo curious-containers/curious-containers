@@ -6,23 +6,21 @@ outputs         ./outputs[_batch_id]    /cc/outputs (defined in red_to_restricte
 """
 import os
 
-from argparse import ArgumentParser
 from typing import List
 from enum import Enum
 from uuid import uuid4
 
 from cc_core.commons.docker_utils import create_batch_archive
 from cc_core.commons.engines import engine_validation
-from cc_core.commons.exceptions import print_exception, exception_format, AgentError, JobExecutionError, TemplateError
-from cc_core.commons.files import load_and_read, dump_print
+from cc_core.commons.exceptions import print_exception, exception_format, AgentError, JobExecutionError
 from cc_core.commons.gpu_info import get_gpu_requirements, match_gpus, InsufficientGPUError
-from cc_core.commons.red import red_validation
-from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR, CONTAINER_AGENT_PATH, \
-    CONTAINER_BLUE_FILE_PATH
-from cc_core.commons.red_secrets import get_secret_values, normalize_keys, get_template_keys
+from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR,\
+    CONTAINER_AGENT_PATH, CONTAINER_BLUE_FILE_PATH
+from cc_core.commons.red_secrets import get_secret_values
 
-from cc_faice.commons.templates import complete_red_templates
 from cc_faice.commons.docker import env_vars, DockerManager
+from red_val.red_validation import red_validation
+from red_val.red_variables import get_variable_keys, RedVariableError
 
 DESCRIPTION = 'Run an experiment as described in a REDFILE with ccagent red in a container.'
 
@@ -67,14 +65,17 @@ def run(red_data,
     secret_values = None
 
     try:
-        # validation
-        red_validation(red_data, output_mode == OutputMode.Directory, container_requirement=True)
-        engine_validation(red_data, 'container', ['docker'], optional=False)
-
-        check_for_template_keys(red_data)
-
-        # templates and secrets
+        # secrets
         secret_values = get_secret_values(red_data)
+
+        # validation
+        red_validation(
+            red_data,
+            output_mode == OutputMode.Directory,
+            container_requirement=True,
+            allow_variables=False
+        )
+        engine_validation(red_data, 'container', ['docker'], optional=False)
 
         # process red data
         blue_batches = convert_red_to_restricted_red(red_data)
@@ -123,25 +124,6 @@ def run(red_data,
         result['state'] = 'failed'
 
     return result
-
-
-def check_for_template_keys(red_data):
-    """
-    Raises an TemplateError, if template keys are found in the given red data. Template keys should be resolved by the
-    faice client, before committing them to the faice execution engine.
-
-    :param red_data: The red data that is checked
-    :type red_data: dict
-
-    :raise TemplateError: If template keys are found in the given red_data
-    """
-    template_keys = set()
-    get_template_keys(red_data, template_keys)
-    if template_keys:
-        raise TemplateError(
-            'Found template keys in red_data. Please resolve them before committing to faice execution engine. '
-            'The following keys were found: "{}"'.format(', '.join(template_keys))
-        )
 
 
 def get_gpu_devices(docker_manager, gpu_ids):

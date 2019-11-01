@@ -26,8 +26,8 @@ from cc_agency.commons.secrets import get_experiment_secret_keys, fill_experimen
     get_batch_secret_keys, TrusteeClient
 from cc_core.commons.docker_utils import create_container_with_gpus, create_batch_archive, image_to_str, \
     detect_nvidia_docker_gpus
-from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR, CONTAINER_AGENT_PATH, \
-    CONTAINER_BLUE_FILE_PATH
+from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR,\
+    CONTAINER_AGENT_PATH, CONTAINER_BLUE_FILE_PATH
 from cc_agency.commons.helper import batch_failure
 
 INSPECTION_IMAGE = 'docker.io/busybox:latest'

@@ -2,7 +2,6 @@ import os
 from argparse import ArgumentParser
 
 from flask import Flask, jsonify, request
-from werkzeug.exceptions import Unauthorized
 import zmq
 
 from cc_agency.commons.helper import create_flask_response

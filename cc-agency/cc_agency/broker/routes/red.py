@@ -2,12 +2,13 @@ import json
 from time import time
 
 from flask import request
+from red_val.red_validation import red_validation
+from red_val.red_variables import get_variable_keys
 from werkzeug.exceptions import BadRequest, NotFound, InternalServerError
 from bson.objectid import ObjectId
 
-from cc_core.commons.red import red_validation
 from cc_core.commons.engines import engine_validation
-from cc_core.commons.red_secrets import get_template_keys, get_secret_values, normalize_keys
+from cc_core.commons.red_secrets import get_secret_values, normalize_keys
 from cc_core.commons.exceptions import exception_format
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red
 
@@ -124,8 +125,7 @@ def red_routes(app, mongo, auth, controller, trustee_client):
                 .format(str(e))
             )
 
-        template_keys = set()
-        get_template_keys(data, template_keys)
+        template_keys = get_variable_keys(data)
         if template_keys:
             raise BadRequest(
                 'The given red data contains the following variables: "{}". Please resolve them before submitting'
