@@ -198,6 +198,9 @@ def create_batch_archive(blue_data):
     tar_file.add(get_blue_agent_host_path(), arcname=CONTAINER_AGENT_PATH, recursive=False)
 
     # add blue file
+
+    with open('tmp_rred_file.json', 'w') as rrf:
+        json.dump(blue_data, rrf, indent=4, sort_keys=True)
     blue_batch_content = json.dumps(blue_data).encode('utf-8')
     # see https://bugs.python.org/issue22208 for more information
     blue_batch_tarinfo = tarfile.TarInfo(CONTAINER_BLUE_FILE_PATH)

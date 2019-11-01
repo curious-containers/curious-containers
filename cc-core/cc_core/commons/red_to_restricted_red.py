@@ -17,9 +17,9 @@ from copy import deepcopy
 import os.path
 import uuid
 
-from cc_core.commons.cwl_types import InputType
 from cc_core.commons.exceptions import InvalidInputReference
 from cc_core.commons.input_references import resolve_input_references
+from red_val.red_types import InputType
 
 CONTAINER_OUTPUT_DIR = '/cc/outputs'
 CONTAINER_INPUT_DIR = '/cc/inputs'

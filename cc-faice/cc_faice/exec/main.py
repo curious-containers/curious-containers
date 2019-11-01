@@ -9,7 +9,7 @@ from cc_core.commons.files import load_and_read, dump_print
 from cc_core.commons.engines import engine_validation
 from cc_core.commons.red_secrets import normalize_keys, get_secret_values
 
-from cc_faice.agent.red.main import run as run_faice_agent_red, OutputMode
+from cc_faice.execution_engine.red_execution_engine import run as run_faice_agent_red, OutputMode
 from cc_faice.commons.templates import complete_red_variables
 from red_val.red_validation import red_validation
 
@@ -90,36 +90,19 @@ def run(red_file, non_interactive, fmt, insecure, keyring_service, **_):
     }
     try:
         red_data = load_and_read(red_file, 'REDFILE')
+
+        secret_values = get_secret_values(red_data)
         red_validation(red_data, False)
         engine_validation(red_data, 'execution', ['ccfaice', 'ccagency'], 'faice exec')
 
-        secret_values = get_secret_values(red_data)
-
-        # exec via CC-FAICE
-        # equivalent to `faice agent red --debug --outputs`
         if 'execution' not in red_data:
             raise KeyError('The key "execution" is needed in red file for usage with faice exec.')
-        if red_data['execution']['engine'] == 'ccfaice':
-            # use connectors, if red file specifies outputs
-            if _has_outputs(red_data):
-                faice_output_mode = OutputMode.Connectors
-            else:
-                faice_output_mode = OutputMode.Directory
-
-            result = run_faice_agent_red(
-                red_file=red_file,
-                disable_pull=False,
-                leave_container=False,
-                preserve_environment=[],
-                non_interactive=non_interactive,
-                insecure=insecure,
-                output_mode=faice_output_mode,
-                keyring_service=keyring_service,
-                gpu_ids=None
-            )
-            return result
 
         complete_red_variables(red_data, keyring_service, non_interactive)
+
+        # exec via CC-FAICE
+        if red_data['execution']['engine'] == 'ccfaice':
+            return run_faice(red_data)
 
         red_data_normalized = deepcopy(red_data)
         normalize_keys(red_data_normalized)
@@ -158,4 +141,29 @@ def run(red_file, non_interactive, fmt, insecure, keyring_service, **_):
         result['debugInfo'] = exception_format(secret_values)
         result['state'] = 'failed'
 
+    return result
+
+
+def run_faice(red_data):
+    """
+    Runs the red execution engine of faice
+
+    :param red_data: The file to execute
+    :type red_data: str
+    """
+    # use connectors, if red file specifies outputs
+    if _has_outputs(red_data):
+        faice_output_mode = OutputMode.Connectors
+    else:
+        faice_output_mode = OutputMode.Directory
+
+    result = run_faice_agent_red(
+        red_data=red_data,
+        disable_pull=False,
+        leave_container=False,
+        preserve_environment=[],
+        insecure=True,  # TODO
+        output_mode=faice_output_mode,
+        gpu_ids=None
+    )
     return result

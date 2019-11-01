@@ -20,7 +20,6 @@ from cc_core.commons.red_secrets import get_secret_values
 
 from cc_faice.commons.docker import env_vars, DockerManager
 from red_val.red_validation import red_validation
-from red_val.red_variables import get_variable_keys, RedVariableError
 
 DESCRIPTION = 'Run an experiment as described in a REDFILE with ccagent red in a container.'
 
