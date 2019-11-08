@@ -423,7 +423,7 @@ def run_blue_batch(blue_batch,
         osx_fuse_result = docker_manager.run_command(
             container,
             set_osx_fuse_permissions_command,
-            user='root',
+            user='0:0',
             work_dir='/'
         )
         if osx_fuse_result.return_code != 0:
@@ -432,7 +432,7 @@ def run_blue_batch(blue_batch,
                .format(osx_fuse_result.return_code, osx_fuse_result.get_stdout(), osx_fuse_result.get_stderr())
             )
 
-    agent_execution_result = docker_manager.run_command(container, command, user='cc')
+    agent_execution_result = docker_manager.run_command(container, command)
 
     blue_agent_result = agent_execution_result.get_agent_result_dict()
 

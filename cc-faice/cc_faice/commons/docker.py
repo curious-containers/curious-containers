@@ -207,7 +207,7 @@ class DockerManager:
         container.put_archive('/', archive)
 
     @staticmethod
-    def run_command(container, command, user='cc', work_dir=None):
+    def run_command(container, command, user='1000:1000', work_dir=None):
         """
         Runs the given command in the given container and waits for the execution to end.
 
