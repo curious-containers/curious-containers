@@ -16,7 +16,7 @@ from cc_agency.commons.helper import str_to_bool, create_flask_response
 from cc_agency.commons.secrets import separate_secrets_batch, separate_secrets_experiment
 
 
-def _prepare_red_data(data, user):
+def _prepare_red_data(data, user, disable_retry):
     timestamp = time()
 
     experiment = {
@@ -31,11 +31,15 @@ def _prepare_red_data(data, user):
     if 'execution' in data:
         stripped_settings = {}
 
+        # add settings to experiment
         for key, val in data['execution']['settings'].items():
             if key == 'access':
                 continue
 
             stripped_settings[key] = val
+
+        # add retry if failed to experiment settings
+        stripped_settings['retryIfFailed'] = not disable_retry
 
         experiment['execution'] = {
             'engine': data['execution']['engine'],
@@ -116,6 +120,7 @@ def red_routes(app, mongo, auth, controller, trustee_client):
             raise BadRequest('Did not send RED data as JSON.')
 
         data = request.json
+        disable_retry = bool(request.args.get('disableRetry', False))
 
         try:
             red_validation(data, False)
@@ -159,7 +164,7 @@ def red_routes(app, mongo, auth, controller, trustee_client):
         except Exception:
             raise BadRequest('\n'.join(exception_format(secret_values=secret_values)))
 
-        experiment, batches, secrets = _prepare_red_data(data, user)
+        experiment, batches, secrets = _prepare_red_data(data, user, disable_retry)
 
         response = trustee_client.store(secrets)
         if response['state'] == 'failed':
