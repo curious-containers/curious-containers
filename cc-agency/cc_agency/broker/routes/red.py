@@ -2,20 +2,21 @@ import json
 from time import time
 
 from flask import request
+from red_val.red_validation import red_validation
+from red_val.red_variables import get_variable_keys
 from werkzeug.exceptions import BadRequest, NotFound, InternalServerError
 from bson.objectid import ObjectId
 
-from cc_core.commons.red import red_validation
 from cc_core.commons.engines import engine_validation
-from cc_core.commons.templates import get_template_keys, get_secret_values, normalize_keys
+from cc_core.commons.red_secrets import get_secret_values, normalize_keys
 from cc_core.commons.exceptions import exception_format
-from cc_core.commons.red_to_blue import convert_red_to_blue
+from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red
 
 from cc_agency.commons.helper import str_to_bool, create_flask_response
 from cc_agency.commons.secrets import separate_secrets_batch, separate_secrets_experiment
 
 
-def _prepare_red_data(data, user):
+def _prepare_red_data(data, user, disable_retry):
     timestamp = time()
 
     experiment = {
@@ -30,11 +31,15 @@ def _prepare_red_data(data, user):
     if 'execution' in data:
         stripped_settings = {}
 
+        # add settings to experiment
         for key, val in data['execution']['settings'].items():
             if key == 'access':
                 continue
 
             stripped_settings[key] = val
+
+        # add retry if failed to experiment settings
+        stripped_settings['retryIfFailed'] = not disable_retry
 
         experiment['execution'] = {
             'engine': data['execution']['engine'],
@@ -115,6 +120,7 @@ def red_routes(app, mongo, auth, controller, trustee_client):
             raise BadRequest('Did not send RED data as JSON.')
 
         data = request.json
+        disable_retry = bool(request.args.get('disableRetry', False))
 
         try:
             red_validation(data, False)
@@ -124,8 +130,7 @@ def red_routes(app, mongo, auth, controller, trustee_client):
                 .format(str(e))
             )
 
-        template_keys = set()
-        get_template_keys(data, template_keys)
+        template_keys = get_variable_keys(data)
         if template_keys:
             raise BadRequest(
                 'The given red data contains the following variables: "{}". Please resolve them before submitting'
@@ -155,11 +160,11 @@ def red_routes(app, mongo, auth, controller, trustee_client):
         try:
             engine_validation(data, 'execution', ['ccagency'], optional=True)
             normalize_keys(data)
-            _ = convert_red_to_blue(data)
+            _ = convert_red_to_restricted_red(data)
         except Exception:
             raise BadRequest('\n'.join(exception_format(secret_values=secret_values)))
 
-        experiment, batches, secrets = _prepare_red_data(data, user)
+        experiment, batches, secrets = _prepare_red_data(data, user, disable_retry)
 
         response = trustee_client.store(secrets)
         if response['state'] == 'failed':

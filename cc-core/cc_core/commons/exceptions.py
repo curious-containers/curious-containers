@@ -73,23 +73,7 @@ class JobExecutionError(Exception):
     pass
 
 
-class CWLSpecificationError(Exception):
-    pass
-
-
 class JobSpecificationError(Exception):
-    pass
-
-
-class RedSpecificationError(Exception):
-    pass
-
-
-class RedValidationError(Exception):
-    pass
-
-
-class RedVariablesError(Exception):
     pass
 
 
@@ -109,5 +93,5 @@ class ParsingError(Exception):
     pass
 
 
-class TemplateError(Exception):
+class InvalidExecutionEngineArgumentException(Exception):
     pass

@@ -2,8 +2,9 @@ from argparse import ArgumentParser
 
 from cc_core.commons.exceptions import print_exception, exception_format
 from cc_core.commons.files import load_and_read, file_extension, wrapped_print, dump, dump_print
-from cc_core.commons.red import red_validation, convert_batch_experiment
-from cc_core.commons.templates import get_secret_values
+from cc_core.commons.red import convert_batch_experiment
+from cc_core.commons.red_secrets import get_secret_values
+from red_val.red_validation import red_validation
 
 DESCRIPTION = 'Convert batches from a single REDFILE into separate files containing only one batch each.'
 

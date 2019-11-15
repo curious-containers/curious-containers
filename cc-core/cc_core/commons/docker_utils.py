@@ -13,8 +13,8 @@ from docker.models.images import Image
 
 from cc_core.commons.engines import NVIDIA_DOCKER_RUNTIME
 from cc_core.commons.files import create_directory_tarinfo
-from cc_core.commons.red_to_blue import CONTAINER_AGENT_PATH, CONTAINER_BLUE_FILE_PATH, CONTAINER_OUTPUT_DIR, \
-    CONTAINER_INPUT_DIR
+from cc_core.commons.red_to_restricted_red import CONTAINER_AGENT_PATH, CONTAINER_BLUE_FILE_PATH,\
+    CONTAINER_OUTPUT_DIR, CONTAINER_INPUT_DIR
 
 GPU_CAPABILITIES = [['gpu'], ['nvidia'], ['compute'], ['compat32'], ['graphics'], ['utility'], ['video'], ['display']]
 GPU_QUERY_IMAGE = 'nvidia/cuda:8.0-runtime'

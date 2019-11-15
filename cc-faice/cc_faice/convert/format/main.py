@@ -1,6 +1,6 @@
 from argparse import ArgumentParser
 
-from cc_core.commons.exceptions import print_exception, AgentError, exception_format
+from cc_core.commons.exceptions import print_exception, exception_format
 from cc_core.commons.files import dump_print, load_and_read
 
 

@@ -4,9 +4,10 @@ from argparse import ArgumentParser
 
 from jsonschema import ValidationError
 
-from cc_core.commons.exceptions import print_exception, exception_format, RedValidationError
+from cc_core.commons.exceptions import print_exception, exception_format
 from cc_core.commons.schema_map import schemas
 from cc_core.commons.files import load_and_read, dump_print
+from red_val.exceptions import RedValidationError
 
 DESCRIPTION = 'Validate data against schema. Returns code 0 if data is valid.'
 

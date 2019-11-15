@@ -1,6 +1,3 @@
-from cc_core.commons.exceptions import ParsingError
-
-
 def _partition_all_internal(s, sep):
     """
     Uses str.partition() to split every occurrence of sep in s. The returned list does not contain empty strings.
@@ -163,3 +160,7 @@ def split_into_parts(to_split, start, end, remove_separators=False):
         result = strip_start_end(result, start, end)
 
     return result
+
+
+class ParsingError(Exception):
+    pass
