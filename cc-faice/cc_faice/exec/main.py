@@ -1,5 +1,4 @@
 from argparse import ArgumentParser
-from copy import deepcopy
 from pprint import pprint
 
 import requests
@@ -7,7 +6,7 @@ import requests
 from cc_core.commons.exceptions import print_exception, exception_format, InvalidExecutionEngineArgumentException
 from cc_core.commons.files import load_and_read, dump_print
 from cc_core.commons.engines import engine_validation
-from cc_core.commons.red_secrets import normalize_keys, get_secret_values
+from cc_core.commons.red_secrets import get_secret_values
 
 from cc_faice.execution_engine.red_execution_engine import run as run_faice_agent_red, OutputMode
 from cc_faice.commons.templates import complete_red_variables
@@ -76,7 +75,7 @@ def main():
     attach_args(parser)
     args = parser.parse_args()
 
-    result = run(**args.__dict__, fmt=args.format)  # format -> fmt renaming to prevent naming collision
+    result = run(**args.__dict__)
 
     if args.debug:
         dump_print(result, args.format)
@@ -132,15 +131,18 @@ def _check_execution_arguments(execution_engine, **arguments):
         if value:
             if key not in allowed_arguments:
                 invalid_arguments.append(key)
-    if invalid_arguments:
+    if len(invalid_arguments) == 1:
         raise InvalidExecutionEngineArgumentException(
-            'Found invalid cli arguments for {}:\n{}'.format(execution_engine, ', '.join(invalid_arguments))
+            'Found invalid cli argument "{}" for {}:'.format(invalid_arguments[0], execution_engine)
+        )
+    elif invalid_arguments:
+        raise InvalidExecutionEngineArgumentException(
+            'Found invalid cli arguments for {}: {}'.format(execution_engine, ', '.join(invalid_arguments))
         )
 
 
 def run(
         red_file,
-        fmt,
         non_interactive,
         keyring_service,
         preserve_environment,
@@ -155,8 +157,6 @@ def run(
     Runs the RED Client.
 
     :param red_file: The path or URL to the RED File to execute
-    :param fmt: The format to use when printing agency response (one of [json, yaml, yml]
-    :type fmt: str
     :param non_interactive: If True, unresolved template values are not asked interactively
     :type non_interactive: bool
     :param keyring_service: The keyring service name to use for template substitution
@@ -204,40 +204,10 @@ def run(
 
         # exec via CC-FAICE
         if red_data['execution']['engine'] == 'ccfaice':
-            return run_faice(red_data)
+            return run_faice(red_data, preserve_environment, disable_pull, leave_container, insecure, gpu_ids)
+        elif red_data['execution']['engine'] == 'ccagency':
+            return run_agency(red_data, disable_retry)
 
-        red_data_normalized = deepcopy(red_data)
-        normalize_keys(red_data_normalized)
-
-        if 'access' not in red_data_normalized['execution']['settings']:
-            result['debugInfo'] = ['ERROR: cannot send RED data to CC-Agency if access settings are not defined.']
-            result['state'] = 'failed'
-            return result
-
-        if 'auth' not in red_data_normalized['execution']['settings']['access']:
-            result['debugInfo'] = ['ERROR: cannot send RED data to CC-Agency if auth is not defined in access '
-                                   'settings.']
-            result['state'] = 'failed'
-            return result
-
-        access = red_data_normalized['execution']['settings']['access']
-
-        r = requests.post(
-            '{}/red'.format(access['url'].strip('/')),
-            auth=(
-                access['auth']['username'],
-                access['auth']['password']
-            ),
-            json=red_data
-        )
-        if 400 <= r.status_code < 500:
-            try:
-                pprint(r.json())
-            except ValueError:  # if the body does not contain json, we ignore it
-                pass
-        r.raise_for_status()
-
-        dump_print(r.json(), fmt)
     except Exception as e:
         print_exception(e, secret_values)
         result['debugInfo'] = exception_format(secret_values)
@@ -246,12 +216,23 @@ def run(
     return result
 
 
-def run_faice(red_data):
+def run_faice(red_data, preserve_environment, disable_pull, leave_container, insecure, gpu_ids):
     """
-    Runs the red execution engine of faice
+    Runs the faice execution engine.
 
     :param red_data: The file to execute
     :type red_data: str
+    :param preserve_environment: A list of strings containing the environment variables, which should be forwarded to
+                                 the docker container.
+    :type preserve_environment: list[str]
+    :param disable_pull: Specifies whether to disable pull or not
+    :type disable_pull: bool
+    :param leave_container: Specifies whether to remove the container after experiment execution
+    :type leave_container: bool
+    :param insecure: Specifies whether to allow SYS_ADMIN capabilities
+    :type insecure: bool
+    :param gpu_ids: List of gpu ids specifying which gpus to use
+    :type gpu_ids: list[int]
     """
     # use connectors, if red file specifies outputs
     if _has_outputs(red_data):
@@ -261,11 +242,60 @@ def run_faice(red_data):
 
     result = run_faice_agent_red(
         red_data=red_data,
-        disable_pull=False,
-        leave_container=False,
-        preserve_environment=[],
-        insecure=True,  # TODO
+        disable_pull=disable_pull,
+        leave_container=leave_container,
+        preserve_environment=preserve_environment,
+        insecure=insecure,
         output_mode=faice_output_mode,
-        gpu_ids=None
+        gpu_ids=gpu_ids
     )
+    return result
+
+
+def run_agency(red_data, disable_retry):
+    """
+    Runs the agency execution engine
+
+    :param red_data: The red data describing the RED experiment
+    :type red_data: dict[str, Any]
+    :param disable_retry: Specifies, if the experiment should be repeated, if it failed
+    :type disable_retry: bool
+    :return: The result dictionary of the execution
+    :rtype: dict[str, Any]
+    """
+    result = {
+        'state': 'succeeded',
+        'debugInfo': None
+    }
+    if 'access' not in red_data['execution']['settings']:
+        result['debugInfo'] = ['ERROR: cannot send RED data to CC-Agency if access settings are not defined.']
+        result['state'] = 'failed'
+        return result
+
+    if 'auth' not in red_data['execution']['settings']['access']:
+        result['debugInfo'] = ['ERROR: cannot send RED data to CC-Agency if auth is not defined in access '
+                               'settings.']
+        result['state'] = 'failed'
+        return result
+
+    access = red_data['execution']['settings']['access']
+
+    r = requests.post(
+        '{}/red'.format(access['url'].strip('/')),
+        auth=(
+            access['auth']['username'],
+            access['auth']['password']
+        ),
+        json=red_data,
+        params={'disableRetry': int(disable_retry)}
+    )
+    if 400 <= r.status_code < 500:
+        try:
+            pprint(r.json())
+        except ValueError:  # if the body does not contain json, we ignore it
+            pass
+    r.raise_for_status()
+
+    result['response'] = r.json()
+
     return result
