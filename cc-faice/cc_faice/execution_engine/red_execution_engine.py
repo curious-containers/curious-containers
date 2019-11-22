@@ -14,8 +14,8 @@ from cc_core.commons.docker_utils import create_batch_archive
 from cc_core.commons.engines import engine_validation
 from cc_core.commons.exceptions import print_exception, exception_format, AgentError, JobExecutionError
 from cc_core.commons.gpu_info import get_gpu_requirements, match_gpus, InsufficientGPUError
-from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR,\
-    CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH
+from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR, \
+    CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH, RestrictedRedBatch
 from cc_core.commons.red_secrets import get_secret_values
 
 from cc_faice.commons.docker import env_vars, DockerManager
@@ -24,6 +24,8 @@ from red_val.red_validation import red_validation
 DESCRIPTION = 'Run an experiment as described in a REDFILE with restricted red agent in a docker container.'
 
 PYTHON_INTERPRETER = 'python3'
+DEFAULT_STDOUT_HOST_FILE = 'stdout.txt'
+DEFAULT_STDERR_HOST_FILE = 'stderr.txt'
 
 
 class OutputMode(Enum):
@@ -31,14 +33,15 @@ class OutputMode(Enum):
     Directory = 1
 
 
-def run(red_data,
-        disable_pull=False,
-        leave_container=False,
-        preserve_environment=None,
-        insecure=False,
-        output_mode=OutputMode.Connectors,
-        gpu_ids=None
-        ):
+def run(
+    red_data,
+    disable_pull=False,
+    leave_container=False,
+    preserve_environment=None,
+    insecure=False,
+    output_mode=OutputMode.Connectors,
+    gpu_ids=None
+):
     """
     Executes a RED Experiment.
 
@@ -47,8 +50,8 @@ def run(red_data,
     :param leave_container: If set to True, the executed docker container will not be removed.
     :param preserve_environment: List of environment variables to preserve inside the docker container.
     :param insecure: Allow insecure capabilities
-    :param output_mode: Either Connectors or Directory. If Connectors, the restricted_red agent will try to execute the output
-                        connectors. If Directory faice will copy the output files into the host output directory.
+    :param output_mode: Either Connectors or Directory. If Connectors, the restricted_red agent will try to execute the
+                        output connectors. If Directory faice will copy the output files into the host output directory.
     :param gpu_ids: A list of gpu ids, that should be used. If None all gpus are considered.
     :type gpu_ids: List[int] or None
 
@@ -293,6 +296,7 @@ def run_restricted_red_batch(
     Executes an restricted_red agent inside a docker container that takes the given restricted_red batch as argument.
 
     :param restricted_red_batch: The restricted_red batch to execute
+    :type restricted_red_batch: RestrictedRedBatch
     :param docker_manager: The docker manager to use for executing the batch
     :type docker_manager: DockerManager
     :param docker_image: The docker image url to use. This docker image should be already present on the host machine
@@ -306,6 +310,7 @@ def run_restricted_red_batch(
     :param gpus: The gpus to use for this batch execution
     :param environment: The environment to use for the docker container
     :param insecure: Allow insecure capabilities
+
     :return: A container result
     :rtype: ContainerExecutionResult
     """
@@ -317,7 +322,7 @@ def run_restricted_red_batch(
     if output_mode == OutputMode.Connectors:
         command.append('--outputs')
 
-    is_mounting = define_is_mounting(restricted_red_batch, insecure)
+    is_mounting = define_is_mounting(restricted_red_batch.data, insecure)
 
     container = docker_manager.create_container(
         name=container_name,
@@ -329,7 +334,7 @@ def run_restricted_red_batch(
         enable_fuse=is_mounting,
     )
 
-    with create_batch_archive(restricted_red_batch) as restricted_red_archive:
+    with create_batch_archive(restricted_red_batch.data) as restricted_red_archive:
         docker_manager.put_archive(container, restricted_red_archive)
 
     # hack to make fuse working under osx
@@ -351,19 +356,27 @@ def run_restricted_red_batch(
                .format(osx_fuse_result.return_code, osx_fuse_result.get_stdout(), osx_fuse_result.get_stderr())
             )
 
+    # run restricted red agent
     agent_execution_result = docker_manager.run_command(container, command, user='cc')
 
     restricted_red_agent_result = agent_execution_result.get_agent_result_dict()
 
+    abs_host_outdir = os.path.abspath(host_outdir.format(batch_index=batch_index))
     if restricted_red_agent_result['state'] == 'succeeded':
         state = ExecutionResultType.Succeeded
 
         # create outputs directory
         if output_mode == OutputMode.Directory:
-            abs_host_outdir = os.path.abspath(host_outdir.format(batch_index=batch_index))
-            _handle_directory_outputs(abs_host_outdir, restricted_red_agent_result['outputs'], container, docker_manager)
+            _handle_directory_outputs(
+                abs_host_outdir,
+                restricted_red_agent_result['outputs'],
+                container,
+                docker_manager
+            )
     else:
         state = ExecutionResultType.Failed
+
+        _handle_stdout_stderr_on_failure(abs_host_outdir, restricted_red_batch, container, docker_manager)
 
     container.stop()
 
@@ -396,7 +409,6 @@ def _handle_directory_outputs(host_outdir, outputs, container, docker_manager):
 
     :raise AgentError: If a file given in outputs could not be retrieved by the docker manager
     """
-
     os.makedirs(host_outdir, exist_ok=True)
 
     for output_key, output_file_information in outputs.items():
@@ -422,6 +434,58 @@ def _handle_directory_outputs(host_outdir, outputs, container, docker_manager):
 
         file_archive.extractall(host_outdir)
         file_archive.close()
+
+
+def _handle_stdout_stderr_on_failure(host_outdir, restricted_red_batch, container, docker_manager):
+    """
+    Creates the stdout/stderr file, if the process failed.
+
+    :param host_outdir: The absolute path to the output directory of the host.
+    :type host_outdir: str
+    :param restricted_red_batch: The restricted red data containing stdout/stderr information
+    :type restricted_red_batch: RestrictedRedBatch
+    :param container: The container to get the outputs from
+    :type container: Container
+    :param docker_manager: The docker manager from which to retrieve the files
+    :type docker_manager: DockerManager
+    """
+    os.makedirs(host_outdir, exist_ok=True)
+
+    stdout_stderr = [
+        ('stdout', 0, DEFAULT_STDOUT_HOST_FILE),
+        ('stderr', 1, DEFAULT_STDERR_HOST_FILE)
+    ]
+
+    for out_err, index, default_name in stdout_stderr:
+        # define container path (e.g. /cc/outputs/stdout.txt)
+        container_path = os.path.join(CONTAINER_OUTPUT_DIR, restricted_red_batch.data['cli'][out_err])
+
+        # define host filename (e.g. stdout.txt)
+        host_file_name = default_name
+        if restricted_red_batch.stdout_stderr_specified_by_user[index]:
+            host_file_name = restricted_red_batch.data['cli'][out_err]
+
+        host_file_path = os.path.join(host_outdir, host_file_name)
+
+        try:
+            with docker_manager.get_file_archive(container, container_path) as file_archive:
+                num_members = len(file_archive.getmembers())
+                if num_members != 1:
+                    raise AssertionError(
+                        'Failed to retrieve {}. Got {} files but expected one.'.format(out_err, num_members)
+                    )
+
+                # copy archive file to outputs directory
+                with file_archive.extractfile(file_archive.getmembers()[0]) as source_file:
+                    with open(host_file_path, 'wb') as target_file:
+                        for line in source_file.readlines():
+                            target_file.write(line)
+
+        except AgentError as e:
+            raise AgentError(
+                'Could not retrieve "{}" with path "{}" from docker container. Failed with the following message:\n{}'
+                .format(out_err, container_path, str(e))
+            )
 
 
 def define_is_mounting(restricted_red_batch, insecure):

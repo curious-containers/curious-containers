@@ -1039,7 +1039,7 @@ class ClientProxy:
         if len(restricted_red_batches) != 1:
             raise ValueError('Got {} batches, but only one was asserted.'.format(len(restricted_red_batches)))
 
-        return restricted_red_batches[0]
+        return restricted_red_batches[0].data
 
     def _create_batch_archive(self, batch):
         """

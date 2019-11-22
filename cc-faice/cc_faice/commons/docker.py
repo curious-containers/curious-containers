@@ -256,7 +256,7 @@ class DockerManager:
     @staticmethod
     def get_file_archive(container, file_path):
         """
-        Retrieves the given file path as tar-archive from the internal docker container.
+        Retrieves the given file path as tar-archive from the given docker container.
 
         :param container: The container to get the archive from
         :type container: Container

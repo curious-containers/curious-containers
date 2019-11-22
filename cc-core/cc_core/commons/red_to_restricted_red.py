@@ -27,6 +27,32 @@ CONTAINER_AGENT_PATH = '/cc/restricted_red_agent.py'
 CONTAINER_RESTRICTED_RED_FILE_PATH = '/cc/restricted_red_file.json'
 
 
+class RestrictedRedBatch:
+    """
+    Defines a restricted red batch. Wraps the dictionary data.
+    """
+    def __init__(self, data, stdout_stderr_specified_by_user):
+        """
+        Creates a new restricted red batch.
+
+        :param data: The data describing the batch as dictionary in a format described here
+                     https://github.com/curious-containers/curious-containers/wiki/Restricted-RED-Format#format
+        :type data: dict[str, Any]
+        :param stdout_stderr_specified_by_user: A tuple containing two booleans. The first describes, whether the stdout
+                                                file name was specified by the user and the second describes whether the
+                                                stderr file name was specified by the user
+        :type stdout_stderr_specified_by_user: tuple[bool, bool]
+        """
+        self.data = data
+        self.stdout_stderr_specified_by_user = stdout_stderr_specified_by_user
+
+    def stdout_specified_by_user(self):
+        return self.stdout_stderr_specified_by_user[0]
+
+    def stderr_specified_by_user(self):
+        return self.stdout_stderr_specified_by_user[1]
+
+
 def convert_red_to_restricted_red(red_data):
     """
     Converts the given red data into a list of restricted red data dictionaries.
@@ -40,10 +66,8 @@ def convert_red_to_restricted_red(red_data):
     :param red_data: The red data to convert
     :type red_data: dict
     :return: A list of restricted red data
-    :rtype: list[dict]
+    :rtype: list[RestrictedRedBatch]
     """
-    restricted_red_batches = []
-
     # Split in batches
     batches = extract_batches(red_data)
 
@@ -54,6 +78,8 @@ def convert_red_to_restricted_red(red_data):
     cli_stderr = cli_description.get('stderr')
 
     command = normalize_base_command(cli_description.get('baseCommand'))
+
+    restricted_red_batches = []
 
     for batch in batches:
         # complete input attributes
@@ -93,24 +119,24 @@ def create_restricted_red_batch(command, batch, cli_inputs, cli_outputs, cli_std
     :return: A dictionary containing the restricted red data
     """
     # ensure stdout/stderr file specification
-    if cli_stdout is None:
-        cli_stdout = '{}.stdout'.format(uuid.uuid4())
-    if cli_stderr is None:
-        cli_stderr = '{}.stderr'.format(uuid.uuid4())
+    stdout_file = cli_stdout or '{}.stdout'.format(uuid.uuid4())
+    stderr_file = cli_stderr or '{}.stderr'.format(uuid.uuid4())
 
     data = {
         'command': command,
         'cli': {
             'inputs': cli_inputs,
             'outputs': cli_outputs,
-            'stdout': cli_stdout,
-            'stderr': cli_stderr
+            'stdout': stdout_file,
+            'stderr': stderr_file
         },
         'inputs': batch['inputs'],
         'outputs': batch['outputs']
     }
 
-    return data
+    stdout_stderr_specified_by_user = (bool(cli_stdout), bool(cli_stderr))
+
+    return RestrictedRedBatch(data, stdout_stderr_specified_by_user)
 
 
 def _outputs_contain_output_type(restricted_red_batch_outputs, output_type):

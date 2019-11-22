@@ -117,19 +117,14 @@ def run(args):
 
         # execute command
         try:
-            execution_result = execute(command)
+            execution_result = execute(command, stdout_file=cli_stdout, stderr_file=cli_stderr)
         except PermissionError as e:
             raise PermissionError(
                 'Could not execute command "{}" in directory "{}". Error:\n{}'.format(command, os.getcwd(), str(e))
             )
         if not execution_result.successful():
             result['process'] = execution_result.to_dict()
-            raise ExecutionError('Execution of command "{}" failed with the following message:\n{}'
-                                 .format(' '.join(command), execution_result.get_std_err()))
-
-        # write stderr/stdout file, if specified
-        _create_text_file(execution_result.std_out, cli_stdout)
-        _create_text_file(execution_result.std_err, cli_stderr)
+            raise ExecutionError('Execution of command "{}" failed.'.format(' '.join(command)))
 
         # check output files/directories
         connector_manager.check_outputs()
@@ -318,8 +313,10 @@ def resolve_connector_cli_version(connector_command, connector_cli_version_cache
         return cli_version
     else:
         std_err = result.get_std_err()
-        raise ConnectorError('Could not detect cli version for connector "{}". Failed with following message:\n{}'
-                             .format(connector_command, std_err))
+        raise ConnectorError(
+            'Could not detect cli version for connector "{}". Failed with following message:\n{}'
+            .format(connector_command, std_err)
+        )
 
 
 def execute_connector(connector_command, top_level_argument, access=None, path=None, listing=None):
@@ -1418,59 +1415,102 @@ class ExecutionResult:
         self.return_code = return_code
 
     def get_std_err(self):
+        if self.std_err is None:
+            return None
         return '\n'.join(self.std_err)
 
     def get_std_out(self):
+        if self.std_out is None:
+            return None
         return '\n'.join(self.std_out)
 
     def successful(self):
         return self.return_code == 0
 
     def to_dict(self):
-        return {'stdErr': self.std_err,
-                'stdOut': self.std_out,
-                'returnCode': self.return_code}
+        d = {'returnCode': self.return_code}
+        if self.std_out:
+            d['stdOut'] = self.std_out
+        if self.std_err:
+            d['stdErr'] = self.std_err
+        return d
 
 
-def _exec(command, work_dir):
+def _exec(command, work_dir, stdout=None, stderr=None):
+    """
+    Executes the given command.
+
+    :param command: The command to execute
+    :param work_dir: The working directory where to execute the command
+    :param stdout: Specifies a path, where the stdout file should be created. If None subprocess.PIPE is used.
+    :param stderr: Specifies a path, where the stderr file should be created. If None subprocess.PIPE is used.
+    :return: a tuple (return_code, stdout, stderr). If a filename for stdout/stderr is given, the return code will
+             contain None for stdout/stderr
+    """
+    if stdout is None:
+        stdout_file = subprocess.PIPE
+    else:
+        stdout_file = open(stdout, 'w')
+
+    if stderr is None:
+        stderr_file = subprocess.PIPE
+    else:
+        stderr_file = open(stderr, 'w')
+
     try:
-        sp = subprocess.Popen(command,
-                              stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE,
-                              cwd=work_dir,
-                              universal_newlines=True,
-                              encoding='utf-8')
+        sp = subprocess.Popen(
+            command,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            cwd=work_dir,
+            universal_newlines=True,
+            encoding='utf-8'
+        )
     except TypeError:
-        sp = subprocess.Popen(command,
-                              stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE,
-                              cwd=work_dir,
-                              universal_newlines=True)
-    return sp
+        sp = subprocess.Popen(
+            command,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            cwd=work_dir,
+            universal_newlines=True
+        )
+
+    std_out, std_err = sp.communicate()
+    return_code = sp.returncode
+
+    return return_code, std_out, std_err
 
 
-def execute(command, work_dir=None):
+def execute(command, work_dir=None, stdout_file=None, stderr_file=None):
     """
     Executes a given commandline command and returns a dictionary with keys: 'returnCode', 'stdOut', 'stdErr'
 
     :param command: The command to execute as list of strings.
     :param work_dir: The working directory for the executed command
-    :return: An ExecutionResult
+    :param stdout_file: A path, specifying where the stdout of the command should be saved. If None stdout is returned
+                        in the execution result
+    :param stderr_file: A path, specifying where the stderr of the command should be saved. If None stderr is returned
+                        in the execution result
+    :return: An ExecutionResult. stdout/stderr of the execution result will be None, if stdout_file/stderr_file is given
+    :rtype: ExecutionResult
     """
     if shutil.which(command[0]) is None:
         return ExecutionResult([], ['Command "{}" not in PATH.'.format(command[0])], 127)
 
     try:
-        sp = _exec(command, work_dir)
+        return_code, std_out, std_err = _exec(command, work_dir, stdout=stdout_file, stderr=stderr_file)
     except FileNotFoundError as e:
         error_msg = ['Command "{}" not found.'.format(command[0])]
         error_msg.extend(_split_lines(str(e)))
         return ExecutionResult([], error_msg, 127)
 
-    std_out, std_err = sp.communicate()
-    return_code = sp.returncode
+    if std_out:
+        std_out = _split_lines(std_out)
 
-    return ExecutionResult(_split_lines(std_out), _split_lines(std_err), return_code)
+    if std_err:
+        std_err = _split_lines(std_err)
+
+    return ExecutionResult(std_out, std_err, return_code)
 
 
 def format_key_index(input_key, input_index=None):
