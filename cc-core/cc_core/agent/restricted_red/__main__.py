@@ -18,20 +18,20 @@ from typing import List, Dict
 from urllib.error import URLError
 from urllib.parse import urlparse
 
-DESCRIPTION = 'Run an experiment as described in a BLUEFILE.'
+DESCRIPTION = 'Run an experiment as described in a RESTRICTED_RED_FILE.'
 JSON_INDENT = 2
 
-BLUE_INPUT_CLASSES = {'File', 'Directory'}
+RESTRICTED_RED_INPUT_CLASSES = {'File', 'Directory'}
 
 
 def attach_args(parser):
     parser.add_argument(
-        'blue_file', action='store', type=str, metavar='BLUEFILE',
-        help='BLUEFILE (json) containing an experiment description as local PATH or http URL.'
+        'restricted_red_file', action='store', type=str, metavar='RESTRICTED_RED_FILE',
+        help='RESTRICTED_RED_FILE (json) containing an experiment description as local PATH or http URL.'
     )
     parser.add_argument(
         '-o', '--outputs', action='store_true',
-        help='Enable connectors specified in the BLUEFILE outputs section.'
+        help='Enable connectors specified in the RESTRICTED_RED_FILE outputs section.'
     )
     parser.add_argument(
         '-d', '--debug', action='store_true',
@@ -49,9 +49,9 @@ def main():
     if args.__dict__.get('debug'):
         print(json.dumps(result, indent=JSON_INDENT))
 
-    scheme = urlparse(args.blue_file).scheme
+    scheme = urlparse(args.restricted_red_file).scheme
     if _is_file_scheme_remote(scheme):
-        _post_result(args.blue_file, result)
+        _post_result(args.restricted_red_file, result)
 
     if result['state'] == 'succeeded':
         return 0
@@ -76,32 +76,34 @@ def run(args):
 
     connector_manager = ConnectorManager()
     try:
-        blue_location = args.blue_file
+        restricted_red_location = args.restricted_red_file
         if args.outputs:
             output_mode = OutputMode.Connectors
         else:
             output_mode = OutputMode.Directory
 
-        blue_data = get_blue_data(blue_location)
+        restricted_red_data = get_restricted_red_data(restricted_red_location)
 
-        if output_mode == OutputMode.Connectors and 'outputs' not in blue_data:
-            raise ExecutionError('--outputs/-o argument is set but no outputs section is defined in BLUE file.')
+        if output_mode == OutputMode.Connectors and 'outputs' not in restricted_red_data:
+            raise ExecutionError(
+                '--outputs/-o argument is set but no outputs section is defined in RESTRICTED_RED_FILE.'
+            )
 
         # validate base_command and build command
-        base_command = blue_data.get('command')
+        base_command = restricted_red_data.get('command')
         _validate_command(base_command)
         result['command'] = base_command
-        cli_arguments = get_cli_arguments(blue_data['cli']['inputs'])
-        command = generate_command(base_command, cli_arguments, blue_data)
+        cli_arguments = get_cli_arguments(restricted_red_data['cli']['inputs'])
+        command = generate_command(base_command, cli_arguments, restricted_red_data)
 
         # import, validate and execute connectors
-        inputs = blue_data.get('inputs')
+        inputs = restricted_red_data.get('inputs')
         if inputs is None:
-            raise ExecutionError('Invalid BLUE file. "inputs" is not specified.')
+            raise ExecutionError('Invalid RESTRICTED_RED_FILE. "inputs" is not specified.')
         connector_manager.import_input_connectors(inputs)
 
-        outputs = blue_data.get('outputs', {})
-        cli = blue_data.get('cli', {})
+        outputs = restricted_red_data.get('outputs', {})
+        cli = restricted_red_data.get('cli', {})
         cli_outputs = cli.get('outputs', {})
         cli_stdout = cli.get('stdout')
         cli_stderr = cli.get('stderr')
@@ -154,39 +156,48 @@ def run(args):
     return result
 
 
-def get_blue_data(blue_location):
+def get_restricted_red_data(restricted_red_location):
     """
-    If blue_file is an URL fetches this URL and loads the json content, otherwise tries to load the file as local file.
+    If restricted_red_file is an URL fetches this URL and loads the json content, otherwise tries to load the file as
+    local file.
 
-    :param blue_location: An URL or local file path as string
+    :param restricted_red_location: An URL or local file path as string
     :return: A tuple containing the content of the given file or url and a fetch mode.
     """
-    scheme = urlparse(blue_location).scheme
+    scheme = urlparse(restricted_red_location).scheme
 
     if _is_file_scheme_local(scheme):
         try:
             if scheme == 'path':
-                blue_location = blue_location[5:]
-            with open(blue_location, 'r') as blue_file:
+                restricted_red_location = restricted_red_location[5:]
+            with open(restricted_red_location, 'r') as restricted_red_file:
                 try:
-                    return json.load(blue_file)
+                    return json.load(restricted_red_file)
                 except Exception as e:
-                    raise ExecutionError('Could not decode blue file "{}". Blue file is not in json format.\n{}'
-                                         .format(blue_location, str(e)))
+                    raise ExecutionError(
+                        'Could not decode restricted_red file "{}". Blue file is not in json format.\n{}'
+                        .format(restricted_red_location, str(e))
+                    )
         except FileNotFoundError as file_error:
-            raise ExecutionError('Could not find blue file "{}" locally. Failed with the following message:\n{}'
-                                 .format(blue_location, str(file_error)))
+            raise ExecutionError(
+                'Could not find restricted_red file "{}" locally. Failed with the following message:\n{}'
+                .format(restricted_red_location, str(file_error))
+            )
     elif _is_file_scheme_remote(scheme):
         try:
-            with urllib.request.urlopen(blue_location) as blue_file:
-                blue_str = blue_file.read().decode('utf-8')
-                return json.loads(blue_str)
+            with urllib.request.urlopen(restricted_red_location) as restricted_red_file:
+                restricted_red_str = restricted_red_file.read().decode('utf-8')
+                return json.loads(restricted_red_str)
         except (URLError, ValueError) as http_error:
-            raise ExecutionError('Could not fetch blue file "{}". Failed with the following message:\n{}.'
-                                 .format(blue_location, str(http_error)))
+            raise ExecutionError(
+                'Could not fetch restricted_red file "{}". Failed with the following message:\n{}.'
+                .format(restricted_red_location, str(http_error))
+            )
 
-    raise ExecutionError('Unknown scheme for blue file "{}". Should be on of ["", "path", "http", "https"] but "{}"'
-                         ' was found.'.format(blue_location, scheme))
+    raise ExecutionError(
+        'Unknown scheme for restricted_red file "{}". Should be on of ["", "path", "http", "https"] but "{}" was found.'
+        .format(restricted_red_location, scheme)
+    )
 
 
 def _is_file_scheme_local(file_scheme):
@@ -215,17 +226,19 @@ def _post_result(url, result):
 
 def _validate_command(command):
     if command is None:
-        raise ExecutionError('Invalid BLUE File. "command" is not specified.')
+        raise ExecutionError('Invalid RESTRICTED_RED_FILE. "command" is not specified.')
 
     if not isinstance(command, list):
-        raise ExecutionError('Invalid BLUE File. "command" has to be a list of strings.\n'
-                             'command: "{}"'.format(command))
+        raise ExecutionError(
+            'Invalid RESTRICTED_RED_FILE. "command" has to be a list of strings.\ncommand: "{}"'.format(command)
+        )
 
     for s in command:
         if not isinstance(s, str):
-            raise ExecutionError('Invalid BLUE File. "command" has to be a list of strings.\n'
-                                 'command: "{}"\n'
-                                 '"{}" is not a string'.format(command, s))
+            raise ExecutionError(
+                'Invalid RESTRICTED_RED_FILE. "command" has to be a list of strings.\ncommand: "{}"\n'
+                '"{}" is not a string'.format(command, s)
+            )
 
 
 def _create_text_file(lines, path):
@@ -619,8 +632,8 @@ class InputConnectorRunner:
     A ConnectorRunner subclass is associated with a connector cli-version.
     Subclasses implement different cli-versions for connectors.
 
-    A ConnectorRunner instance is associated with a blue input, that uses a connector.
-    For every blue input, that uses a connector a new ConnectorRunner instance is created.
+    A ConnectorRunner instance is associated with a restricted_red input, that uses a connector.
+    For every restricted_red input, that uses a connector a new ConnectorRunner instance is created.
     """
 
     def __init__(self,
@@ -637,7 +650,7 @@ class InputConnectorRunner:
         """
         Initiates an InputConnectorRunner.
 
-        :param input_key: The blue input key
+        :param input_key: The restricted_red input key
         :param input_index: The input index in case of File/Directory lists
         :param connector_command: The connector command to execute
         :param input_class: Either 'File' or 'Directory'
@@ -862,15 +875,15 @@ class OutputConnectorRunner:
     A ConnectorRunner subclass is associated with a connector cli-version.
     Subclasses implement different cli-versions for connectors.
 
-    A ConnectorRunner instance is associated with a blue input, that uses a connector.
-    For every blue output, that uses a connector a new OutputConnectorRunner instance is created.
+    A ConnectorRunner instance is associated with a restricted_red input, that uses a connector.
+    For every restricted_red output, that uses a connector a new OutputConnectorRunner instance is created.
     """
 
     def __init__(self, output_key, connector_command, output_class, access, glob_pattern, listing=None):
         """
         initiates a OutputConnectorRunner.
 
-        :param output_key: The blue output key
+        :param output_key: The restricted_red output key
         :type output_key: str
         :param connector_command: The connector command to execute
         :type connector_command: str
@@ -1348,7 +1361,7 @@ def create_cli_output_runner(cli_output_key, cli_output_value, output_value=None
     Creates a CliOutputRunner.
 
     :param cli_output_key: The output key of the corresponding cli output
-    :param cli_output_value: The output value given in the blue file of the corresponding cli output
+    :param cli_output_value: The output value given in the restricted_red file of the corresponding cli output
     :param output_value: The job output value for this output key. Can be None
     :param cli_stdout: The path to the stdout file
     :param cli_stderr: The path to the stderr file
@@ -2101,7 +2114,7 @@ def _is_connector_input_value(input_value):
                 return False
         return True
     elif isinstance(input_value, dict):
-        return input_value.get('class') in BLUE_INPUT_CLASSES
+        return input_value.get('class') in RESTRICTED_RED_INPUT_CLASSES
 
     return False
 

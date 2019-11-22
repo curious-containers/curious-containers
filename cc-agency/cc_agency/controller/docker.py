@@ -27,7 +27,7 @@ from cc_agency.commons.secrets import get_experiment_secret_keys, fill_experimen
 from cc_core.commons.docker_utils import create_container_with_gpus, create_batch_archive, image_to_str, \
     detect_nvidia_docker_gpus
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR,\
-    CONTAINER_AGENT_PATH, CONTAINER_BLUE_FILE_PATH
+    CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH
 from cc_agency.commons.helper import batch_failure
 
 INSPECTION_IMAGE = 'docker.io/busybox:latest'
@@ -557,7 +557,7 @@ class ClientProxy:
             err_str = repr(e)
             debug_info = 'CC-Agent data is not a valid json object: {}\n\nstdout was:\n{}'.format(err_str, stdout_logs)
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
-            self._log('Failed to load json from blue agent:\n{}'.format(err_str))
+            self._log('Failed to load json from restricted red agent:\n{}'.format(err_str))
             return
 
         try:
@@ -566,7 +566,7 @@ class ClientProxy:
             err_str = repr(e)
             debug_info = 'CC-Agent data sent by callback does not comply with jsonschema: {}'.format(err_str)
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
-            self._log('Failed to validate blue agent output:\n{}'.format(err_str))
+            self._log('Failed to validate restricted_red agent output:\n{}'.format(err_str))
             return
 
         if data['state'] == 'failed':
@@ -908,8 +908,8 @@ class ClientProxy:
         - Collects all arguments for the docker container execution
         - Removes old containers with the same name
         - Creates the docker container with the collected arguments
-        - Creates an archive containing the blue_agent and the blue_file of this batch and copies this archive into the
-          container
+        - Creates an archive containing the restricted_red_agent and the restricted_red_file of this batch and copies
+          this archive into the container
         - Starts the container
 
         :param batch: The batch to run inside the container
@@ -944,7 +944,7 @@ class ClientProxy:
             CONTAINER_AGENT_PATH,
             '--outputs',
             '--debug',
-            CONTAINER_BLUE_FILE_PATH
+            CONTAINER_RESTRICTED_RED_FILE_PATH
         ]
 
         ram = experiment['container']['settings']['ram']
@@ -984,22 +984,22 @@ class ClientProxy:
             ulimits=ulimits
         )  # type: Container
 
-        # copy blue agent and blue file to container
+        # copy restricted_red agent and restricted_red file to container
         with self._create_batch_archive(batch) as tar_archive:
             container.put_archive('/', tar_archive)
 
         container.start()
 
-    def _create_blue_batch(self, batch):
+    def _create_restricted_red_batch(self, batch):
         """
-        Creates a dictionary containing the data for a blue batch.
+        Creates a dictionary containing the data for a restricted_red batch.
 
         :param batch: The batch description
         :type batch: dict
-        :return: A dictionary containing a blue batch
+        :return: A dictionary containing a restricted_red batch
         :rtype: dict
         :raise TrusteeServiceError: If the trustee service is unavailable or unable to collect the requested secret keys
-        :raise ValueError: If there was more than one blue batch after red_to_blue
+        :raise ValueError: If there was more than one restricted_red batch after red_to_restricted_red
         """
         batch_id = str(batch['_id'])
         batch_secret_keys = get_batch_secret_keys(batch)
@@ -1034,26 +1034,26 @@ class ClientProxy:
             'outputs': batch['outputs']
         }
 
-        blue_batches = convert_red_to_restricted_red(red_data)
+        restricted_red_batches = convert_red_to_restricted_red(red_data)
 
-        if len(blue_batches) != 1:
-            raise ValueError('Got {} batches, but only one was asserted.'.format(len(blue_batches)))
+        if len(restricted_red_batches) != 1:
+            raise ValueError('Got {} batches, but only one was asserted.'.format(len(restricted_red_batches)))
 
-        return blue_batches[0]
+        return restricted_red_batches[0]
 
     def _create_batch_archive(self, batch):
         """
-        Creates a tar archive to put into the docker container for the blue agent execution.
-        The blue data is extracted from the given batch.
+        Creates a tar archive to put into the docker container for the restricted_red agent execution.
+        The restricted_red data is extracted from the given batch.
 
-        :param batch: The data to put into the blue file of the returned archive
+        :param batch: The data to put into the restricted_red file of the returned archive
         :type batch: dict
-        :return: A tar archive containing the blue agent and the given blue batch
+        :return: A tar archive containing the restricted_red agent and the given restricted_red batch
         :rtype: io.BytesIO or bytes
         """
-        blue_data = self._create_blue_batch(batch)
+        restricted_red_data = self._create_restricted_red_batch(batch)
 
-        return create_batch_archive(blue_data)
+        return create_batch_archive(restricted_red_data)
 
     def _run_batch_container_failure(self, batch_id, debug_info, current_state):
         batch_failure(self._mongo, batch_id, debug_info, None, current_state)

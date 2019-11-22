@@ -5,7 +5,7 @@ This module defines functionality to transform red data into restricted red data
   - Normalize base command
   - Resolve input references
 
-The following steps were performed for blue, but are NOT longer supported for restricted red:
+The following steps were performed for restricted_red, but are NOT longer supported for restricted red:
   - Define a command from a red file
     - Define the base command
     - Define the arguments for the command
@@ -23,8 +23,8 @@ from red_val.red_types import InputType
 
 CONTAINER_OUTPUT_DIR = '/cc/outputs'
 CONTAINER_INPUT_DIR = '/cc/inputs'
-CONTAINER_AGENT_PATH = '/cc/blue_agent.py'
-CONTAINER_BLUE_FILE_PATH = '/cc/blue_file.json'
+CONTAINER_AGENT_PATH = '/cc/restricted_red_agent.py'
+CONTAINER_RESTRICTED_RED_FILE_PATH = '/cc/restricted_red_file.json'
 
 
 def convert_red_to_restricted_red(red_data):
@@ -79,59 +79,54 @@ def convert_red_to_restricted_red(red_data):
 
 def create_restricted_red_batch(command, batch, cli_inputs, cli_outputs, cli_stdout=None, cli_stderr=None):
     """
-    Defines a dictionary containing a blue batch
+    Defines a dictionary containing a restricted red batch
 
-    :param command: The command of the blue data, given as list of strings
-    :param batch: The Job data of the blue data
+    :param command: The command of the restricted red data, given as list of strings
+    :param batch: The Job data of the restricted red data
     :param cli_inputs: The input section of cli description
     :param cli_outputs: The outputs section of cli description
-    :param cli_stdout: The path where the stdout file should be created. If None cli.stdout is not added to the blue
-                       batch
-    :param cli_stderr: The path where the stderr file should be created. If None cli.stderr it is not added to the blue
-                       batch
-    :return: A dictionary containing the blue data
+    :param cli_stdout: The path where the stdout file should be created. If None cli.stdout is generated with random
+                       name.
+    :param cli_stderr: The path where the stderr file should be created. If None cli.stderr it generated with random
+                       name.
+
+    :return: A dictionary containing the restricted red data
     """
-    batch_inputs = batch['inputs']
-    batch_outputs = batch['outputs']
+    # ensure stdout/stderr file specification
+    if cli_stdout is None:
+        cli_stdout = '{}.stdout'.format(uuid.uuid4())
+    if cli_stderr is None:
+        cli_stderr = '{}.stderr'.format(uuid.uuid4())
+
     data = {
         'command': command,
         'cli': {
             'inputs': cli_inputs,
-            'outputs': cli_outputs
+            'outputs': cli_outputs,
+            'stdout': cli_stdout,
+            'stderr': cli_stderr
         },
-        'inputs': batch_inputs,
-        'outputs': batch_outputs
+        'inputs': batch['inputs'],
+        'outputs': batch['outputs']
     }
-
-    if _outputs_contain_output_type(batch_outputs, 'stdout') and cli_stdout is None:
-        cli_stdout = str(uuid.uuid4())
-
-    if _outputs_contain_output_type(batch_outputs, 'stderr') and cli_stderr is None:
-        cli_stderr = str(uuid.uuid4())
-
-    # add stdout/stderr file specification
-    if cli_stdout is not None:
-        data['cli']['stdout'] = cli_stdout
-
-    if cli_stderr is not None:
-        data['cli']['stderr'] = cli_stderr
 
     return data
 
 
-def _outputs_contain_output_type(blue_batch_outputs, output_type):
+def _outputs_contain_output_type(restricted_red_batch_outputs, output_type):
     """
-    Returns whether the given blue batch outputs contain an output with the given output type.
+    Returns whether the given restricted red batch outputs contain an output with the given output type.
     This function is used to determine, if this batch output contain stdout or stderr specifications.
 
-    :param blue_batch_outputs: The blue batch outputs to search in. The keys are the output keys of the converted red
-                               file and the values are the output values corresponding to this key.
-    :type blue_batch_outputs: dict
+    :param restricted_red_batch_outputs: The restricted red batch outputs to search in. The keys are the output keys of
+                                         the converted red file and the values are the output values corresponding to
+                                         this key.
+    :type restricted_red_batch_outputs: dict
     :param output_type: The OutputType to search given as string
     :type output_type: str
     :return: True, if an output of type output_type could be found, otherwise False
     """
-    for output_value in blue_batch_outputs.values():
+    for output_value in restricted_red_batch_outputs.values():
         if output_value.get('class') == output_type:
             return True
     return False

@@ -1,8 +1,12 @@
 """
-                Host                    Container
-blue_file       in memory               /cc/blue_file.json
-blue_agent      <import...>             /cc/blue_agent.py
-outputs         ./outputs[_batch_id]    /cc/outputs (defined in red_to_restricted_red.py)
+THIS FILE IS DEPRECATED AND WILL BE REMOVED IN A FUTURE VERSION!
+See cc_faice/execution_engine/red_execution_engine.py for similar functionality
+
+
+                          Host                    Container
+restricted_red_file       in memory               /cc/restricted_red_file.json
+restricted_red_agent      <import...>             /cc/restricted_red_agent.py
+outputs                   ./outputs[_batch_id]    /cc/outputs (defined in red_to_restricted_red.py)
 """
 import os
 
@@ -17,7 +21,7 @@ from cc_core.commons.exceptions import print_exception, exception_format, AgentE
 from cc_core.commons.files import load_and_read, dump_print
 from cc_core.commons.gpu_info import get_gpu_requirements, match_gpus, InsufficientGPUError
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR,\
-    CONTAINER_AGENT_PATH, CONTAINER_BLUE_FILE_PATH
+    CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH
 from cc_core.commons.red_secrets import get_secret_values, normalize_keys
 
 from cc_faice.commons.templates import complete_red_variables
@@ -131,7 +135,7 @@ def run(red_file,
     :param preserve_environment: List of environment variables to preserve inside the docker container.
     :param non_interactive: If True, unresolved template values are not asked interactively
     :param insecure: Allow insecure capabilities
-    :param output_mode: Either Connectors or Directory. If Connectors, the blue agent will try to execute the output
+    :param output_mode: Either Connectors or Directory. If Connectors, the restricted_red agent will try to execute the output
                         connectors. If Directory faice will copy the output files into the host output directory.
     :param keyring_service: The keyring service name to use for template substitution
     :param gpu_ids: A list of gpu ids, that should be used. If None all gpus are considered.
@@ -164,7 +168,7 @@ def run(red_file,
         normalize_keys(red_data)
 
         # process red data
-        blue_batches = convert_red_to_restricted_red(red_data)
+        restricted_red_batches = convert_red_to_restricted_red(red_data)
 
         # docker settings
         docker_image = red_data['container']['settings']['image']['url']
@@ -181,14 +185,14 @@ def run(red_file,
             registry_auth = red_data['container']['settings']['image'].get('auth')
             docker_manager.pull(docker_image, auth=registry_auth)
 
-        if len(blue_batches) == 1:
+        if len(restricted_red_batches) == 1:
             host_outdir = 'outputs'
         else:
             host_outdir = 'outputs_{batch_index}'
 
-        for batch_index, blue_batch in enumerate(blue_batches):
-            container_execution_result = run_blue_batch(
-                blue_batch=blue_batch,
+        for batch_index, restricted_red_batch in enumerate(restricted_red_batches):
+            container_execution_result = run_restricted_red_batch(
+                restricted_red_batch=restricted_red_batch,
                 docker_manager=docker_manager,
                 docker_image=docker_image,
                 host_outdir=host_outdir,
@@ -284,17 +288,17 @@ def get_gpus(docker_manager, gpu_settings, gpu_ids):
     return gpus
 
 
-def _get_blue_batch_mount_keys(blue_batch):
+def _get_restricted_red_batch_mount_keys(restricted_red_batch):
     """
     Returns a list of input/output keys, that use mounting connectors
 
-    :param blue_batch: The blue batch to analyse
+    :param restricted_red_batch: The restricted_red batch to analyse
     :return: A list of input/outputs keys as strings
     """
     mount_connectors = []
 
     # check input keys
-    for input_key, input_value in blue_batch['inputs'].items():
+    for input_key, input_value in restricted_red_batch['inputs'].items():
         if not isinstance(input_value, list):
             input_value = [input_value]
 
@@ -323,10 +327,10 @@ class ContainerExecutionResult:
         Creates a new Container Execution Result.
 
         :param state: The state of the agent execution ('failed', 'successful')
-        :param command: The command, that executes the blue agent inside the docker container
+        :param command: The command, that executes the restricted_red agent inside the docker container
         :param container_name: The name of the docker container
-        :param agent_execution_result: The parsed json output of the blue agent
-        :param agent_std_err: The std err as list of string of the blue agent
+        :param agent_execution_result: The parsed json output of the restricted_red agent
+        :param agent_std_err: The std err as list of string of the restricted_red agent
         :param container_stats: The stats of the executed container, given as dictionary
         """
         self.state = state
@@ -364,27 +368,29 @@ class ContainerExecutionResult:
             raise AgentError(self.agent_std_err)
 
 
-def run_blue_batch(blue_batch,
-                   docker_manager,
-                   docker_image,
-                   host_outdir,
-                   output_mode,
-                   leave_container,
-                   batch_index,
-                   ram,
-                   gpus,
-                   environment,
-                   insecure):
+def run_restricted_red_batch(
+        restricted_red_batch,
+        docker_manager,
+        docker_image,
+        host_outdir,
+        output_mode,
+        leave_container,
+        batch_index,
+        ram,
+        gpus,
+        environment,
+        insecure
+):
     """
-    Executes an blue agent inside a docker container that takes the given blue batch as argument.
+    Executes an restricted_red agent inside a docker container that takes the given restricted_red batch as argument.
 
-    :param blue_batch: The blue batch to execute
+    :param restricted_red_batch: The restricted_red batch to execute
     :param docker_manager: The docker manager to use for executing the batch
     :type docker_manager: DockerManager
     :param docker_image: The docker image url to use. This docker image should be already present on the host machine
     :param host_outdir: The outputs directory of the host. This is mounted as outdir inside the docker container
                         mounted into the docker container, where host_outputs_dir is the host directory.
-    :param output_mode: If output mode == Connectors the blue agent will be started with '--outputs' flag
+    :param output_mode: If output mode == Connectors the restricted_red agent will be started with '--outputs' flag
                         Otherwise this function will retrieve the output files with container.get_archive()
     :param leave_container: If True, the started container will not be stopped after execution.
     :param batch_index: The index of the current batch
@@ -398,12 +404,12 @@ def run_blue_batch(blue_batch,
 
     container_name = str(uuid4())
 
-    command = _create_blue_agent_command()
+    command = _create_restricted_red_agent_command()
 
     if output_mode == OutputMode.Connectors:
         command.append('--outputs')
 
-    is_mounting = define_is_mounting(blue_batch, insecure)
+    is_mounting = define_is_mounting(restricted_red_batch, insecure)
 
     container = docker_manager.create_container(
         name=container_name,
@@ -415,8 +421,8 @@ def run_blue_batch(blue_batch,
         enable_fuse=is_mounting,
     )
 
-    with create_batch_archive(blue_batch) as blue_archive:
-        docker_manager.put_archive(container, blue_archive)
+    with create_batch_archive(restricted_red_batch) as restricted_red_archive:
+        docker_manager.put_archive(container, restricted_red_archive)
 
     # hack to make fuse working under osx
     if is_mounting:
@@ -439,15 +445,15 @@ def run_blue_batch(blue_batch,
 
     agent_execution_result = docker_manager.run_command(container, command)
 
-    blue_agent_result = agent_execution_result.get_agent_result_dict()
+    restricted_red_agent_result = agent_execution_result.get_agent_result_dict()
 
-    if blue_agent_result['state'] == 'succeeded':
+    if restricted_red_agent_result['state'] == 'succeeded':
         state = ExecutionResultType.Succeeded
 
         # create outputs directory
         if output_mode == OutputMode.Directory:
             abs_host_outdir = os.path.abspath(host_outdir.format(batch_index=batch_index))
-            _handle_directory_outputs(abs_host_outdir, blue_agent_result['outputs'], container, docker_manager)
+            _handle_directory_outputs(abs_host_outdir, restricted_red_agent_result['outputs'], container, docker_manager)
     else:
         state = ExecutionResultType.Failed
 
@@ -460,7 +466,7 @@ def run_blue_batch(blue_batch,
         state,
         command,
         container_name,
-        blue_agent_result,
+        restricted_red_agent_result,
         agent_execution_result.get_stderr(),
         agent_execution_result.get_stats()
     )
@@ -510,8 +516,8 @@ def _handle_directory_outputs(host_outdir, outputs, container, docker_manager):
         file_archive.close()
 
 
-def define_is_mounting(blue_batch, insecure):
-    mount_connectors = _get_blue_batch_mount_keys(blue_batch)
+def define_is_mounting(restricted_red_batch, insecure):
+    mount_connectors = _get_restricted_red_batch_mount_keys(restricted_red_batch)
     if mount_connectors:
         if not insecure:
             raise Exception(
@@ -523,12 +529,12 @@ def define_is_mounting(blue_batch, insecure):
     return False
 
 
-def _create_blue_agent_command():
+def _create_restricted_red_agent_command():
     """
-    Defines the command to execute inside the docker container to execute the blue agent.
-    The resulting command looks similar to "python3 /cc/blue_agent.py /cc/blue_file.json --debug"
+    Defines the command to execute inside the docker container to execute the restricted_red agent.
+    The resulting command looks similar to "python3 /cc/restricted_red_agent.py /cc/restricted_red_file.json --debug"
 
     :return: A list of strings to execute inside the docker container.
     :rtype: List[str]
     """
-    return [PYTHON_INTERPRETER, CONTAINER_AGENT_PATH, CONTAINER_BLUE_FILE_PATH, '--debug']
+    return [PYTHON_INTERPRETER, CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH, '--debug']

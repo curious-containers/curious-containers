@@ -13,7 +13,7 @@ from docker.models.images import Image
 
 from cc_core.commons.engines import NVIDIA_DOCKER_RUNTIME
 from cc_core.commons.files import create_directory_tarinfo
-from cc_core.commons.red_to_restricted_red import CONTAINER_AGENT_PATH, CONTAINER_BLUE_FILE_PATH,\
+from cc_core.commons.red_to_restricted_red import CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH,\
     CONTAINER_OUTPUT_DIR, CONTAINER_INPUT_DIR
 
 GPU_CAPABILITIES = [['gpu'], ['nvidia'], ['compute'], ['compat32'], ['graphics'], ['utility'], ['video'], ['display']]
@@ -169,40 +169,40 @@ def _get_nvidia_visible_devices_from_gpus(gpus):
     raise TypeError('gpus should be the string "all" an int or a list, but found "{}"'.format(gpus))
 
 
-def create_batch_archive(blue_data):
+def create_batch_archive(restricted_red_data):
     """
-    Creates a tar archive that can be put into a cc_core container to execute the blue agent.
+    Creates a tar archive that can be put into a cc_core container to execute the restricted red agent.
 
-    This archive contains the blue agent, a blue file, the outputs-directory and the inputs-directory.
-    The blue file is filled with the given blue data.
+    This archive contains the restricted red agent, a restricted red file, the outputs-directory and the inputs-directory.
+    The restricted red file is filled with the given restricted red data.
     The outputs-directory is an empty directory, with name 'outputs'
     The inputs-directory is an empty directory, with name 'inputs'
-    The tar archive and the blue file are always in memory and never stored on the local filesystem.
+    The tar archive and the restricted red file are always in memory and never stored on the local filesystem.
 
     The resulting archive is:
     /cc
-    |--/blue_agent.py
-    |--/blue_file.json
+    |--/restricted_red_agent.py
+    |--/restricted_red_file.json
     |--/outputs/
     |--/inputs/
 
-    :param blue_data: The data to put into the blue file of the returned archive
-    :type blue_data: dict
-    :return: A tar archive containing the blue agent, a blue file, and input/output directories
+    :param restricted_red_data: The data to put into the restricted red file of the returned archive
+    :type restricted_red_data: dict
+    :return: A tar archive containing the restricted red agent, a restricted red file, and input/output directories
     :rtype: io.BytesIO or bytes
     """
     data_file = io.BytesIO()
     tar_file = tarfile.open(mode='w', fileobj=data_file)
 
-    # add blue agent
-    tar_file.add(get_blue_agent_host_path(), arcname=CONTAINER_AGENT_PATH, recursive=False)
+    # add restricted red agent
+    tar_file.add(get_restricted_red_agent_host_path(), arcname=CONTAINER_AGENT_PATH, recursive=False)
 
-    # add blue file
-    blue_batch_content = json.dumps(blue_data).encode('utf-8')
+    # add restricted red file
+    restricted_red_batch_content = json.dumps(restricted_red_data).encode('utf-8')
     # see https://bugs.python.org/issue22208 for more information
-    blue_batch_tarinfo = tarfile.TarInfo(CONTAINER_BLUE_FILE_PATH)
-    blue_batch_tarinfo.size = len(blue_batch_content)
-    tar_file.addfile(blue_batch_tarinfo, io.BytesIO(blue_batch_content))
+    restricted_red_batch_tarinfo = tarfile.TarInfo(CONTAINER_RESTRICTED_RED_FILE_PATH)
+    restricted_red_batch_tarinfo.size = len(restricted_red_batch_content)
+    tar_file.addfile(restricted_red_batch_tarinfo, io.BytesIO(restricted_red_batch_content))
 
     # add outputs directory
     output_directory_tarinfo = create_directory_tarinfo(CONTAINER_OUTPUT_DIR, owner_name='cc')
@@ -219,15 +219,15 @@ def create_batch_archive(blue_data):
     return data_file
 
 
-def get_blue_agent_host_path():
+def get_restricted_red_agent_host_path():
     """
-    Returns the path of the blue agent in the host machine.
+    Returns the path of the restricted red agent in the host machine.
 
-    :return: The path to the blue agent
+    :return: The path to the restricted red agent
     :rtype: str
     """
-    import cc_core.agent.blue.__main__ as blue_main
-    return blue_main.__file__
+    import cc_core.agent.restricted_red.__main__ as restricted_red_main
+    return restricted_red_main.__file__
 
 
 def image_to_str(image):

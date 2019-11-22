@@ -4,8 +4,8 @@ from argparse import ArgumentParser
 
 from cc_core.version import VERSION
 
-from cc_core.agent.blue.__main__ import main as blue_main
-from cc_core.agent.blue.__main__ import DESCRIPTION as BLUE_DESCRIPTION
+from cc_core.agent.restricted_red.__main__ import main as restricted_red_main
+from cc_core.agent.restricted_red.__main__ import DESCRIPTION as RESTRICTED_RED_DESCRIPTION
 
 SCRIPT_NAME = 'ccagent'
 
@@ -13,7 +13,7 @@ DESCRIPTION = 'CC-Agent Copyright (C) 2018  Christoph Jansen. This software is d
               'LICENSE and is part of the Curious Containers project (https://curious-containers.github.io/).'
 
 MODES = OrderedDict([
-    ('blue', {'main': blue_main, 'description': BLUE_DESCRIPTION})
+    ('restricted_red', {'main': restricted_red_main, 'description': RESTRICTED_RED_DESCRIPTION})
 ])
 
 
