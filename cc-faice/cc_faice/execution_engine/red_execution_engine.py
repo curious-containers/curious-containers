@@ -266,7 +266,7 @@ class ContainerExecutionResult:
             'containerName': self.container_name,
             'agentStdOut': self.agent_execution_result,
             'agentStdErr': self.agent_std_err,
-            'dockerStats': self.container_stats
+            # 'dockerStats': self.container_stats  # Excluded, because it does not contain useful information
         }
 
     def raise_for_state(self):
@@ -376,7 +376,9 @@ def run_restricted_red_batch(
     else:
         state = ExecutionResultType.Failed
 
-        _handle_stdout_stderr_on_failure(abs_host_outdir, restricted_red_batch, container, docker_manager)
+        # only create stdout/stderr, if user process was executed
+        if restricted_red_agent_result['process']['executed']:
+            _handle_stdout_stderr_on_failure(abs_host_outdir, restricted_red_batch, container, docker_manager)
 
     container.stop()
 
@@ -424,16 +426,14 @@ def _handle_directory_outputs(host_outdir, outputs, container, docker_manager):
             continue
 
         try:
-            file_archive = docker_manager.get_file_archive(container, file_path)
+            with docker_manager.get_file_archive(container, file_path) as file_archive:
+                file_archive.extractall(host_outdir)
         except AgentError as e:
             raise AgentError(
                 'Could not retrieve output file "{}" with path "{}" from docker container. '
                 'Failed with the following message:\n{}'
                 .format(output_key, file_path, str(e))
             )
-
-        file_archive.extractall(host_outdir)
-        file_archive.close()
 
 
 def _handle_stdout_stderr_on_failure(host_outdir, restricted_red_batch, container, docker_manager):

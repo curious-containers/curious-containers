@@ -58,7 +58,10 @@ class OutputMode(enum.Enum):
 def run(args):
     result = {
         'command': None,
-        'process': None,
+        'process': {
+            'returnCode': None,
+            'executed': False
+        },
         'debugInfo': None,
         'inputs': None,
         'outputs': None,
@@ -113,8 +116,9 @@ def run(args):
             raise PermissionError(
                 'Could not execute command "{}" in directory "{}". Error:\n{}'.format(command, os.getcwd(), str(e))
             )
+        result['process']['returnCode'] = execution_result.return_code
+        result['process']['executed'] = True
         if not execution_result.successful():
-            result['process'] = execution_result.to_dict()
             raise ExecutionError('Execution of command "{}" failed.'.format(' '.join(command)))
 
         # check output files/directories
@@ -131,13 +135,9 @@ def run(args):
         result['state'] = 'failed'
     finally:
         # umount directories
-        umount_errors = connector_manager.umount_connectors()
-        errors_len = len(umount_errors)
-        umount_errors = [_format_exception(e) for e in umount_errors]
-        if errors_len == 1:
-            result['debugInfo'] += '\n{}'.format(umount_errors[0])
-        elif errors_len > 1:
-            result['debugInfo'] += '\n{}'.format('\n'.join(umount_errors))
+        umount_errors = [_format_exception(e) for e in connector_manager.umount_connectors()]
+        umount_errors.insert(0, 'Errors while unmounting directories:')
+        result['debugInfo'] = umount_errors
 
     return result
 

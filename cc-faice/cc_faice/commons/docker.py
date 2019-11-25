@@ -85,6 +85,9 @@ class AgentExecutionResult:
         """
         return self._stats
 
+    def was_user_process_executed(self):
+        return 'returnCode' in self.get_agent_result_dict()
+
 
 class DockerManager:
     def __init__(self):
