@@ -173,7 +173,8 @@ def create_batch_archive(restricted_red_data):
     """
     Creates a tar archive that can be put into a cc_core container to execute the restricted red agent.
 
-    This archive contains the restricted red agent, a restricted red file, the outputs-directory and the inputs-directory.
+    This archive contains the restricted red agent, a restricted red file, the outputs-directory and the
+    inputs-directory.
     The restricted red file is filled with the given restricted red data.
     The outputs-directory is an empty directory, with name 'outputs'
     The inputs-directory is an empty directory, with name 'inputs'

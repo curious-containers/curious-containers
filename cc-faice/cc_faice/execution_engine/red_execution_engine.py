@@ -370,15 +370,14 @@ def run_restricted_red_batch(
             _handle_directory_outputs(
                 abs_host_outdir,
                 restricted_red_agent_result['outputs'],
-                container,
-                docker_manager
+                container
             )
     else:
         state = ExecutionResultType.Failed
 
         # only create stdout/stderr, if user process was executed
         if restricted_red_agent_result['process']['executed']:
-            _handle_stdout_stderr_on_failure(abs_host_outdir, restricted_red_batch, container, docker_manager)
+            _handle_stdout_stderr_on_failure(abs_host_outdir, restricted_red_batch, container)
 
     container.stop()
 
@@ -395,7 +394,7 @@ def run_restricted_red_batch(
     )
 
 
-def _handle_directory_outputs(host_outdir, outputs, container, docker_manager):
+def _handle_directory_outputs(host_outdir, outputs, container):
     """
     Creates the host_outdir and retrieves the files given in outputs from the docker container. The retrieved files are
     then stored in the created host_outdir.
@@ -406,8 +405,6 @@ def _handle_directory_outputs(host_outdir, outputs, container, docker_manager):
     :type outputs: Dict[str, Dict]
     :param container: The container to get the outputs from
     :type container: Container
-    :param docker_manager: The docker manager from which to retrieve the files
-    :type docker_manager: DockerManager
 
     :raise AgentError: If a file given in outputs could not be retrieved by the docker manager
     """
@@ -426,7 +423,8 @@ def _handle_directory_outputs(host_outdir, outputs, container, docker_manager):
             continue
 
         try:
-            DockerManager.copy_file_archive(container, file_path, host_outdir)
+            with DockerManager.get_file_archive(container, file_path) as file_archive:
+                file_archive.extractall(host_outdir)
         except AgentError as e:
             raise AgentError(
                 'Could not retrieve output file "{}" with path "{}" from docker container. '
@@ -435,7 +433,7 @@ def _handle_directory_outputs(host_outdir, outputs, container, docker_manager):
             )
 
 
-def _handle_stdout_stderr_on_failure(host_outdir, restricted_red_batch, container, docker_manager):
+def _handle_stdout_stderr_on_failure(host_outdir, restricted_red_batch, container):
     """
     Creates the stdout/stderr file, if the process failed.
 
@@ -445,8 +443,6 @@ def _handle_stdout_stderr_on_failure(host_outdir, restricted_red_batch, containe
     :type restricted_red_batch: RestrictedRedBatch
     :param container: The container to get the outputs from
     :type container: Container
-    :param docker_manager: The docker manager from which to retrieve the files
-    :type docker_manager: DockerManager
     """
     os.makedirs(host_outdir, exist_ok=True)
 
@@ -467,7 +463,7 @@ def _handle_stdout_stderr_on_failure(host_outdir, restricted_red_batch, containe
         host_file_path = os.path.join(host_outdir, host_file_name)
 
         try:
-            with docker_manager.get_file_archive(container, container_path) as file_archive:
+            with DockerManager.get_file_archive(container, container_path) as file_archive:
                 num_members = len(file_archive.getmembers())
                 if num_members != 1:
                     raise AssertionError(
