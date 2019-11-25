@@ -943,7 +943,6 @@ class ClientProxy:
             'python3',
             CONTAINER_AGENT_PATH,
             '--outputs',
-            '--debug',
             CONTAINER_RESTRICTED_RED_FILE_PATH
         ]
 

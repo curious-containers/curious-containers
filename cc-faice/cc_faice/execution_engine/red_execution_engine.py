@@ -504,9 +504,9 @@ def define_is_mounting(restricted_red_batch, insecure):
 def _create_restricted_red_agent_command():
     """
     Defines the command to execute inside the docker container to execute the restricted_red agent.
-    The resulting command looks similar to "python3 /cc/restricted_red_agent.py /cc/restricted_red_file.json --debug"
+    The resulting command looks similar to "python3 /cc/restricted_red_agent.py /cc/restricted_red_file.json"
 
     :return: A list of strings to execute inside the docker container.
     :rtype: List[str]
     """
-    return [PYTHON_INTERPRETER, CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH, '--debug']
+    return [PYTHON_INTERPRETER, CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH]

@@ -13,9 +13,9 @@ import urllib.request
 
 from argparse import ArgumentParser
 from functools import total_ordering
+from json import JSONDecodeError
 from traceback import format_exc
 from typing import List, Dict
-from urllib.error import URLError
 from urllib.parse import urlparse
 
 DESCRIPTION = 'Run an experiment as described in a RESTRICTED_RED_FILE.'
@@ -33,10 +33,6 @@ def attach_args(parser):
         '-o', '--outputs', action='store_true',
         help='Enable connectors specified in the RESTRICTED_RED_FILE outputs section.'
     )
-    parser.add_argument(
-        '-d', '--debug', action='store_true',
-        help='Write debug info, including detailed exceptions, to stdout.'
-    )
 
 
 def main():
@@ -46,12 +42,7 @@ def main():
 
     result = run(args)
 
-    if args.__dict__.get('debug'):
-        print(json.dumps(result, indent=JSON_INDENT))
-
-    scheme = urlparse(args.restricted_red_file).scheme
-    if _is_file_scheme_remote(scheme):
-        _post_result(args.restricted_red_file, result)
+    print(json.dumps(result, indent=JSON_INDENT))
 
     if result['state'] == 'succeeded':
         return 0
@@ -153,46 +144,25 @@ def run(args):
 
 def get_restricted_red_data(restricted_red_location):
     """
-    If restricted_red_file is an URL fetches this URL and loads the json content, otherwise tries to load the file as
-    local file.
+    Tries to load the file as local file.
 
-    :param restricted_red_location: An URL or local file path as string
-    :return: A tuple containing the content of the given file or url and a fetch mode.
+    :param restricted_red_location: A local file path as string
+    :return: The content of the given file as dictionary
     """
-    scheme = urlparse(restricted_red_location).scheme
-
-    if _is_file_scheme_local(scheme):
-        try:
-            if scheme == 'path':
-                restricted_red_location = restricted_red_location[5:]
-            with open(restricted_red_location, 'r') as restricted_red_file:
-                try:
-                    return json.load(restricted_red_file)
-                except Exception as e:
-                    raise ExecutionError(
-                        'Could not decode restricted_red file "{}". Blue file is not in json format.\n{}'
-                        .format(restricted_red_location, str(e))
-                    )
-        except FileNotFoundError as file_error:
-            raise ExecutionError(
-                'Could not find restricted_red file "{}" locally. Failed with the following message:\n{}'
-                .format(restricted_red_location, str(file_error))
-            )
-    elif _is_file_scheme_remote(scheme):
-        try:
-            with urllib.request.urlopen(restricted_red_location) as restricted_red_file:
-                restricted_red_str = restricted_red_file.read().decode('utf-8')
-                return json.loads(restricted_red_str)
-        except (URLError, ValueError) as http_error:
-            raise ExecutionError(
-                'Could not fetch restricted_red file "{}". Failed with the following message:\n{}.'
-                .format(restricted_red_location, str(http_error))
-            )
-
-    raise ExecutionError(
-        'Unknown scheme for restricted_red file "{}". Should be on of ["", "path", "http", "https"] but "{}" was found.'
-        .format(restricted_red_location, scheme)
-    )
+    try:
+        with open(restricted_red_location, 'r') as restricted_red_file:
+            try:
+                return json.load(restricted_red_file)
+            except JSONDecodeError as e:
+                raise ExecutionError(
+                    'Could not parse restricted RED file "{}". File is not json formatted.\n{}'
+                    .format(restricted_red_location, str(e))
+                )
+    except FileNotFoundError as file_error:
+        raise ExecutionError(
+            'Could not find restricted RED file "{}" locally. Failed with the following message:\n{}'
+            .format(restricted_red_location, str(file_error))
+        )
 
 
 def _is_file_scheme_local(file_scheme):
@@ -2160,4 +2130,4 @@ def _is_connector_input_value(input_value):
 
 
 if __name__ == '__main__':
-    main()
+    exit(main())
