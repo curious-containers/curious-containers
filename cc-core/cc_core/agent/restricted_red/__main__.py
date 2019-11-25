@@ -60,7 +60,9 @@ def run(args):
         'command': None,
         'process': {
             'returnCode': None,
-            'executed': False
+            'executed': False,
+            'stdout': None,
+            'stderr': None
         },
         'debugInfo': None,
         'inputs': None,
@@ -118,6 +120,8 @@ def run(args):
             )
         result['process']['returnCode'] = execution_result.return_code
         result['process']['executed'] = True
+        result['process']['stdout'] = cli_stdout
+        result['process']['stderr'] = cli_stderr
         if not execution_result.successful():
             raise ExecutionError('Execution of command "{}" failed.'.format(' '.join(command)))
 

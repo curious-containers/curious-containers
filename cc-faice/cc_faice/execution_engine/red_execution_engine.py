@@ -365,12 +365,22 @@ def run_restricted_red_batch(
     if restricted_red_agent_result['state'] == 'succeeded':
         state = ExecutionResultType.Succeeded
 
+        stdout_file = None
+        if restricted_red_batch.stdout_specified_by_user():
+            stdout_file = restricted_red_agent_result['process']['stdout']
+
+        stderr_file = None
+        if restricted_red_batch.stderr_specified_by_user():
+            stderr_file = restricted_red_agent_result['process']['stderr']
+
         # create outputs directory
         if output_mode == OutputMode.Directory:
             _handle_directory_outputs(
                 abs_host_outdir,
                 restricted_red_agent_result['outputs'],
-                container
+                container,
+                stdout_file,
+                stderr_file
             )
     else:
         state = ExecutionResultType.Failed
@@ -394,7 +404,7 @@ def run_restricted_red_batch(
     )
 
 
-def _handle_directory_outputs(host_outdir, outputs, container):
+def _handle_directory_outputs(host_outdir, outputs, container, stdout_file, stderr_file):
     """
     Creates the host_outdir and retrieves the files given in outputs from the docker container. The retrieved files are
     then stored in the created host_outdir.
@@ -405,6 +415,12 @@ def _handle_directory_outputs(host_outdir, outputs, container):
     :type outputs: Dict[str, Dict]
     :param container: The container to get the outputs from
     :type container: Container
+    :param stdout_file: The path of the user process stdout inside the docker container, if the user defined the stdout
+                        path in the RED file. If the user did not define cli.stdout in the RED file this has to be None.
+    :type stdout_file: str
+    :param stderr_file: The path of the user process stderr inside the docker container, if the user defined the stderr
+                        path in the RED file. If the user did not define cli.stderr in the RED file this has to be None.
+    :type stderr_file: str
 
     :raise AgentError: If a file given in outputs could not be retrieved by the docker manager
     """
@@ -430,6 +446,29 @@ def _handle_directory_outputs(host_outdir, outputs, container):
                 'Could not retrieve output file "{}" with path "{}" from docker container. '
                 'Failed with the following message:\n{}'
                 .format(output_key, file_path, str(e))
+            )
+
+    # handle stdout/stderr
+    if stdout_file:
+        container_path = os.path.join(CONTAINER_OUTPUT_DIR, stdout_file)
+        try:
+            with DockerManager.get_file_archive(container, container_path) as file_archive:
+                file_archive.extractall(host_outdir)
+        except AgentError as e:
+            raise AgentError(
+                'Could not retrieve stdout file with path "{}" from docker container. '
+                'Failed with the following message:\n{}'.format(container_path, str(e))
+            )
+
+    if stderr_file:
+        container_path = os.path.join(CONTAINER_OUTPUT_DIR, stderr_file)
+        try:
+            with DockerManager.get_file_archive(container, container_path) as file_archive:
+                file_archive.extractall(host_outdir)
+        except AgentError as e:
+            raise AgentError(
+                'Could not retrieve stderr file with path "{}" from docker container. '
+                'Failed with the following message:\n{}'.format(container_path, str(e))
             )
 
 
