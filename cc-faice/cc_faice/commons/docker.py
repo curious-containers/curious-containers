@@ -283,3 +283,28 @@ class DockerManager:
             raise AgentError(str(e))
 
         return tarfile.TarFile(fileobj=output_archive_bytes)
+
+    @staticmethod
+    def copy_file_archive(container, container_path, local_path):
+        """
+        Copies the given container file/directory onto the local filesystem.
+
+        :param container: The container to get the archive from
+        :type container: Container
+        :param container_path: A file/directory path inside the docker container
+        :type container_path: str
+        :param local_path: The directory where the file/directory should be copied into
+        :type local_path: str
+        """
+        try:
+            bits, _ = container.get_archive(container_path)
+
+            for index, chunk in enumerate(bits):
+                print('-------------------- index', index)
+
+                # not sure why it is possible to interpret a part of the data as tarfile. Probably this is, because the
+                # docker api returns one chunk per file?
+                with tarfile.TarFile(fileobj=io.BytesIO(chunk)) as tar_file:
+                    tar_file.extractall(local_path)
+        except DockerException as e:
+            raise AgentError(str(e))

@@ -89,9 +89,5 @@ class AccessError(Exception):
     pass
 
 
-class ParsingError(Exception):
-    pass
-
-
 class InvalidExecutionEngineArgumentException(Exception):
     pass

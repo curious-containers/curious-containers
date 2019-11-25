@@ -2,6 +2,7 @@ import pytest
 
 from cc_core.commons.exceptions import InvalidInputReference
 from cc_core.commons.input_references import resolve_input_references
+from red_val.parsing import ParsingError
 
 INPUT_LIST_TO_REFERENCE = {
     'a_file': [

@@ -307,3 +307,81 @@ def detect_nvidia_docker_gpus(client, runtimes):
             )
 
     return gpus
+
+
+# noinspection PyMethodOverriding
+class ContainerFileBitsWrapper(io.RawIOBase):
+    def __init__(self, bits):
+        """
+        Wraps the given bits generator of an docker file tar archive and implements a file-like object, that can be used
+        as fileobject for an TarFile object.
+
+        :param bits: The bits generator to read from
+        """
+        super().__init__()
+        self._bits = bits
+        self._chunk_offset = 0  # the offset of the first bit in the current _chunk, in respect to the hole stream
+        self._chunk = bytes(0)  # The current chunk
+        self._current_offset = 0  # The current read offset in the chunk
+
+    def _read_next(self):
+        chunk_len = len(self._chunk)
+        self._chunk = next(self._bits)
+        self._chunk_offset += chunk_len
+
+    def _offset_to_global_offset(self, offset):
+        return self._chunk_offset + offset
+
+    def _get_chunk_end(self):
+        return self._chunk_offset + len(self._chunk)
+
+    def read(self, n):
+        """
+        Reads n bytes from the internal buffer and returns them as bytes object.
+
+        :param n: The number of bytes to read
+        :type n: int
+        :return: A bytes object containing n bytes
+        :rtype: bytes
+        """
+        end = self._current_offset + n
+
+        tmp_chunk_offset = self._chunk_offset
+        tmp_chunk = self._chunk
+
+        while end > self._offset_to_global_offset(len(self._chunk)):
+            try:
+                self._read_next()
+            except StopIteration:
+                break
+            tmp_chunk += self._chunk
+
+        result = tmp_chunk[self._current_offset-tmp_chunk_offset:end-tmp_chunk_offset]
+        self._current_offset = end
+        return result
+
+    def tell(self):
+        return self._current_offset
+
+    def write(self, size):
+        raise io.UnsupportedOperation('Can not write to ContainerFileBitsWrapper')
+
+    def close(self):
+        self._bits = None
+        self._chunk = None
+
+    def seek(self, offset):
+        if offset < self._current_offset:
+            raise ValueError('Cannot get bytes from the past')
+
+        while offset > self._get_chunk_end():
+            try:
+                self._read_next()
+            except StopIteration:
+                break
+
+        self._current_offset = offset
+        return self._current_offset
+
+    def fileno(self):
+        raise OSError('ContainerFileBitsWrapper does not use a underlying file object.')

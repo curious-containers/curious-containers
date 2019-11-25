@@ -337,7 +337,7 @@ def run_restricted_red_batch(
     with create_batch_archive(restricted_red_batch.data) as restricted_red_archive:
         docker_manager.put_archive(container, restricted_red_archive)
 
-    # hack to make fuse working under osx
+    # hack to make fuse work under osx
     if is_mounting:
         set_osx_fuse_permissions_command = [
             'chmod',
@@ -426,8 +426,7 @@ def _handle_directory_outputs(host_outdir, outputs, container, docker_manager):
             continue
 
         try:
-            with docker_manager.get_file_archive(container, file_path) as file_archive:
-                file_archive.extractall(host_outdir)
+            DockerManager.copy_file_archive(container, file_path, host_outdir)
         except AgentError as e:
             raise AgentError(
                 'Could not retrieve output file "{}" with path "{}" from docker container. '

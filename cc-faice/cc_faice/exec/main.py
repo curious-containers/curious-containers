@@ -236,7 +236,7 @@ def run_faice(red_data, preserve_environment, disable_pull, leave_container, ins
     """
     # use connectors, if red file specifies outputs
     if _has_outputs(red_data):
-        faice_output_mode = OutputMode.Connectors
+        faice_output_mode = OutputMode.Directory  # TODO: Change back
     else:
         faice_output_mode = OutputMode.Directory
 
