@@ -72,7 +72,7 @@ def run(args):
     try:
         restricted_red_location = args.restricted_red_file
         if args.outputs:
-            output_mode = OutputMode.Directory  # TODO: change back
+            output_mode = OutputMode.Connectors
         else:
             output_mode = OutputMode.Directory
 
