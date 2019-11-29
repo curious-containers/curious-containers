@@ -16,7 +16,7 @@ from docker.tls import TLSConfig
 from docker.types import Ulimit
 import jsonschema
 import pymongo
-from requests.exceptions import ConnectionError
+from requests.exceptions import ConnectionError, ReadTimeout
 from bson.objectid import ObjectId
 import bson.errors
 
@@ -326,7 +326,7 @@ class ClientProxy:
 
         try:
             containers = self._client.containers.list(all=True, limit=-1, filters=filters)  # type: List[Container]
-        except ConnectionError as e:
+        except (ConnectionError, ReadTimeout) as e:
             raise DockerException(
                 'Could not list current containers. Failed with the following message:\n{}'.format(str(e))
             )
