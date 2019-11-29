@@ -28,7 +28,8 @@ from cc_core.commons.docker_utils import create_container_with_gpus, create_batc
     detect_nvidia_docker_gpus
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR,\
     CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH
-from cc_agency.commons.helper import batch_failure
+from cc_agency.commons.helper import batch_failure, USER_SPECIFIED_STDOUT_KEY, USER_SPECIFIED_STDERR_KEY, \
+    get_gridfs_filename
 
 INSPECTION_IMAGE = 'docker.io/busybox:latest'
 NVIDIA_INSPECTION_IMAGE = 'nvidia/cuda:8.0-runtime'
@@ -531,6 +532,10 @@ class ClientProxy:
         """
         Inspects the logs of the given exited container and updates the database accordingly.
 
+        Also handles stdout/stderr:
+        - If the batch failed, stdout/stderr are copied into the mongo GridFS
+        - If the experiment explicitly specified stdout/stderr they are also copied into the mongo GridFS
+
         :param container: The container to inspect
         :type container: Container
         :param batch: The batch to update according to the result of the container execution.
@@ -539,11 +544,30 @@ class ClientProxy:
         bson_batch_id = batch['_id']
         batch_id = str(bson_batch_id)
 
+        stdout_filename = get_gridfs_filename(batch_id, 'stdout')
+        stderr_filename = get_gridfs_filename(batch_id, 'stderr')
+
+        stdout_logs_raw = None
+        stderr_logs_raw = None
         try:
-            stdout_logs = container.logs(stderr=False).decode('utf-8')
-            stderr_logs = container.logs(stdout=False).decode('utf-8')
+            stdout_logs_raw = container.logs(stderr=False)
+            stderr_logs_raw = container.logs(stdout=False)
+
+            # helper function for convenience
+            def write_stdout_stderr_to_gridfs():
+                self._mongo.write_file(stdout_filename, stdout_logs_raw)
+                self._mongo.write_file(stderr_filename, stderr_logs_raw)
+
+            stdout_logs = stdout_logs_raw.decode('utf-8')
+            stderr_logs = stderr_logs_raw.decode('utf-8')
             docker_stats = container.stats(stream=False)
         except Exception as e:
+            # here write_stdout_stderr_to_gridfs may not be defined, so do it by hand
+            if stdout_logs_raw is not None:
+                self._mongo.write_file(stdout_filename, stdout_logs_raw)
+            if stderr_logs_raw is not None:
+                self._mongo.write_file(stderr_filename, stderr_logs_raw)
+
             err_str = repr(e)
             self._log('Failed to get container logs:\n{}'.format(err_str))
             debug_info = 'Could not get logs or stats of container: {}'.format(err_str)
@@ -554,6 +578,7 @@ class ClientProxy:
         try:
             data = json.loads(stdout_logs)
         except json.JSONDecodeError as e:
+            write_stdout_stderr_to_gridfs()
             err_str = repr(e)
             debug_info = 'CC-Agent data is not a valid json object: {}\n\nstdout was:\n{}'.format(err_str, stdout_logs)
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
@@ -563,6 +588,7 @@ class ClientProxy:
         try:
             jsonschema.validate(data, agent_result_schema)
         except jsonschema.ValidationError as e:
+            write_stdout_stderr_to_gridfs()
             err_str = repr(e)
             debug_info = 'CC-Agent data sent by callback does not comply with jsonschema: {}'.format(err_str)
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
@@ -570,18 +596,25 @@ class ClientProxy:
             return
 
         if data['state'] == 'failed':
+            write_stdout_stderr_to_gridfs()
             debug_info = 'Batch failed.\nContainer stderr:\n{}\ndebug info:\n{}'.format(stderr_logs, data['debugInfo'])
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
             return
 
         batch = self._mongo.db['batches'].find_one(
             {'_id': bson_batch_id},
-            {'attempts': 1, 'node': 1, 'state': 1}
+            {'attempts': 1, 'node': 1, 'state': 1, USER_SPECIFIED_STDOUT_KEY: 1, USER_SPECIFIED_STDERR_KEY: 1}
         )
         if batch['state'] != 'processing':
+            write_stdout_stderr_to_gridfs()
             debug_info = 'Batch failed.\nExited container, but not in state processing.'
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
             return
+
+        if batch[USER_SPECIFIED_STDOUT_KEY]:
+            self._mongo.write_file(stdout_filename, stdout_logs_raw)
+        if batch[USER_SPECIFIED_STDERR_KEY]:
+            self._mongo.write_file(stderr_filename, stderr_logs_raw)
 
         self._mongo.db['batches'].update_one(
             {
@@ -1038,7 +1071,21 @@ class ClientProxy:
         if len(restricted_red_batches) != 1:
             raise ValueError('Got {} batches, but only one was asserted.'.format(len(restricted_red_batches)))
 
-        return restricted_red_batches[0].data
+        restricted_red_batch = restricted_red_batches[0]
+
+        self._mongo.db['batches'].update_one(
+            {
+                '_id': ObjectId(batch_id)
+            },
+            {
+                '$set': {
+                    USER_SPECIFIED_STDOUT_KEY: restricted_red_batch.stdout_specified_by_user(),
+                    USER_SPECIFIED_STDERR_KEY: restricted_red_batch.stderr_specified_by_user()
+                },
+            }
+        )
+
+        return restricted_red_batch.data
 
     def _create_batch_archive(self, batch):
         """

@@ -12,7 +12,8 @@ from cc_core.commons.red_secrets import get_secret_values, normalize_keys
 from cc_core.commons.exceptions import exception_format
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red
 
-from cc_agency.commons.helper import str_to_bool, create_flask_response
+from cc_agency.commons.helper import str_to_bool, create_flask_response, USER_SPECIFIED_STDOUT_KEY, \
+    USER_SPECIFIED_STDERR_KEY, get_gridfs_filename, create_text_flask_response
 from cc_agency.commons.secrets import separate_secrets_batch, separate_secrets_experiment
 
 
@@ -77,7 +78,9 @@ def _prepare_red_data(data, user, disable_retry):
             }],
             'attempts': 0,
             'inputs': rb['inputs'],
-            'outputs': rb['outputs']
+            'outputs': rb['outputs'],
+            USER_SPECIFIED_STDOUT_KEY: False,
+            USER_SPECIFIED_STDERR_KEY: False
         }
         batch, additional_secrets = separate_secrets_batch(batch)
         secrets.update(additional_secrets)
@@ -250,6 +253,32 @@ def red_routes(app, mongo, auth, controller, trustee_client):
     @app.route('/batches/<object_id>', methods=['GET'])
     def get_batches_id(object_id):
         return get_collection_id('batches', object_id)
+
+    @app.route('/batches/<batch_id>/<filename>', methods=['GET'])
+    def get_batches_id_file(batch_id, filename):
+        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
+
+        try:
+            bson_id = ObjectId(batch_id)
+        except Exception:
+            raise BadRequest('Not a valid batch ID.')
+
+        match = {'_id': bson_id}
+
+        if not user.is_admin:
+            match['username'] = user.username
+
+        o = mongo.db['batches'].find_one(match)
+        if not o:
+            raise NotFound('Could not find batch with id "{}".'.format(batch_id))
+
+        db_filename = get_gridfs_filename(batch_id, filename)
+
+        data = mongo.get_file(db_filename)
+        if data is None:
+            raise NotFound('Could not find "{}" of batch "{}"'.format(filename, batch_id))
+
+        return create_text_flask_response(data, auth, user.authentication_cookie)
 
     def get_collection_id(collection, object_id):
         user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)

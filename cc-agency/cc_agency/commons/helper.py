@@ -11,6 +11,10 @@ from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 
+USER_SPECIFIED_STDOUT_KEY = 'usedSpecifiedStdout'
+USER_SPECIFIED_STDERR_KEY = 'usedSpecifiedStderr'
+
+
 def decode_authentication_cookie(cookie_value):
     """
     Extracts the username and value from the given cookie value.
@@ -44,6 +48,44 @@ def encode_authentication_cookie(username, token):
         base64.b64encode(username.encode('utf-8')).decode('utf-8'),
         token
     )
+
+
+def get_gridfs_filename(batch_id, file_identifier):
+    """
+    Converts the given batch_id and the stdout/stderr string into a GridFS filename.
+
+    :param batch_id: The batch id this stdout/stderr file is associated with
+    :type batch_id: str
+    :param file_identifier: The identifier of the file
+    :type file_identifier: str
+    :return: A string representing the stdout/stderr filename for the given batch
+    :rtype: str
+    """
+    return '{}_{}'.format(batch_id, file_identifier)
+
+
+def create_text_flask_response(text_data, auth, authentication_cookie=None):
+    """
+    Creates a flask response object, containing the given text data as plain text and the given authentication cookie.
+
+    :param text_data: The data to send back
+    :type text_data: str or bytes
+    :param auth: The auth object to use
+    :param authentication_cookie: The value of the authentication cookie
+    :return: A flask response object
+    """
+    flask_response = flask.make_response(
+        text_data,
+        200
+    )
+
+    if authentication_cookie:
+        flask_response.set_cookie(
+            authentication_cookie[0],
+            authentication_cookie[1],
+            expires=time() + auth.tokens_valid_for_seconds
+        )
+    return flask_response
 
 
 def create_flask_response(data, auth, authentication_cookie=None):
