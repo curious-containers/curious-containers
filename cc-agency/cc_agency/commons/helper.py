@@ -4,7 +4,7 @@ from binascii import hexlify
 from time import time
 
 import flask
-from flask import request
+from flask import request, stream_with_context
 from bson.objectid import ObjectId
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.hashes import SHA256
@@ -64,19 +64,21 @@ def get_gridfs_filename(batch_id, file_identifier):
     return '{}_{}'.format(batch_id, file_identifier)
 
 
-def create_text_flask_response(text_data, auth, authentication_cookie=None):
+def create_file_flask_response(source_file, auth, authentication_cookie=None):
     """
-    Creates a flask response object, containing the given text data as plain text and the given authentication cookie.
+    Creates a flask response object, containing the given data given by source_file as plain text and the given
+    authentication cookie.
 
-    :param text_data: The data to send back
-    :type text_data: str or bytes
+    :param source_file: The data to send back
+    :type source_file: str or bytes
     :param auth: The auth object to use
     :param authentication_cookie: The value of the authentication cookie
     :return: A flask response object
     """
-    flask_response = flask.make_response(
-        text_data,
-        200
+    flask_response = flask.Response(
+        stream_with_context(source_file),
+        content_type='text/plain',
+        status='200'
     )
 
     if authentication_cookie:

@@ -34,6 +34,20 @@ class Mongo:
         with gfs.new_file(filename=filename) as f:
             f.write(content)
 
+    def write_file_from_file(self, filename, source_file):
+        """
+        Writes a file into the GridFS of the mongo db. This file has the given filename and contains the content
+        retrieved from the source file.
+
+        :param filename: The filename of the file to create
+        :type filename: str
+        :param source_file: An iterable yielding the data to the content
+        """
+        gfs = gridfs.GridFS(self.db)
+        with gfs.new_file(filename=filename) as f:
+            for line in source_file.readlines():
+                f.write(line)
+
     def read_file(self, filename):
         """
         Returns the content of the given filename as bytes object.

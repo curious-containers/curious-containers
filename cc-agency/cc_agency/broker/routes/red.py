@@ -13,7 +13,7 @@ from cc_core.commons.exceptions import exception_format
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red
 
 from cc_agency.commons.helper import str_to_bool, create_flask_response, USER_SPECIFIED_STDOUT_KEY, \
-    USER_SPECIFIED_STDERR_KEY, get_gridfs_filename, create_text_flask_response
+    USER_SPECIFIED_STDERR_KEY, get_gridfs_filename, create_file_flask_response
 from cc_agency.commons.secrets import separate_secrets_batch, separate_secrets_experiment
 
 
@@ -278,7 +278,7 @@ def red_routes(app, mongo, auth, controller, trustee_client):
         if data is None:
             raise NotFound('Could not find "{}" of batch "{}"'.format(filename, batch_id))
 
-        return create_text_flask_response(data, auth, user.authentication_cookie)
+        return create_file_flask_response(data, auth, user.authentication_cookie)
 
     def get_collection_id(collection, object_id):
         user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)

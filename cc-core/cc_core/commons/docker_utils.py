@@ -310,6 +310,41 @@ def detect_nvidia_docker_gpus(client, runtimes):
     return gpus
 
 
+def retrieve_file_archive(container, container_path):
+    """
+    Retrieves the file given by container_path as TarFile object with only one member.
+
+    :param container: The container to retrieve the file from
+    :param container_path: The path inside the container to retrieve. This should be an absolute path.
+    :return: A TarFile object with the only member being the specified file
+    :rtype: tarfile.TarFile
+    """
+    try:
+        bits, _ = container.get_archive(container_path)
+    except DockerException as e:
+        raise DockerException(str(e))
+
+    return tarfile.TarFile(fileobj=ContainerFileBitsWrapper(bits))
+
+
+def get_first_tarfile_member(tar_file):
+    """
+    Returns a file like object of the first member of the given tarfile
+
+    :param tar_file: The tarfile object to get the first member of
+    :type tar_file: tarfile.TarFile
+    :return: A file like object containing the data of the first member in the given tarfile
+    """
+    num_members = len(tar_file.getmembers())
+    if num_members != 1:
+        raise AssertionError(
+            'Failed to retrieve file from docker container tar archive. Got {} files but expected one.'
+            .format(num_members)
+        )
+
+    return tar_file.extractfile(tar_file.getmembers()[0])
+
+
 # noinspection PyMethodOverriding
 class ContainerFileBitsWrapper(io.RawIOBase):
     def __init__(self, bits):

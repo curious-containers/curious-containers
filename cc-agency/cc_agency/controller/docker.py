@@ -25,7 +25,7 @@ from cc_agency.commons.schemas.callback import agent_result_schema
 from cc_agency.commons.secrets import get_experiment_secret_keys, fill_experiment_secrets, fill_batch_secrets, \
     get_batch_secret_keys, TrusteeClient
 from cc_core.commons.docker_utils import create_container_with_gpus, create_batch_archive, image_to_str, \
-    detect_nvidia_docker_gpus
+    detect_nvidia_docker_gpus, retrieve_file_archive, get_first_tarfile_member
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR,\
     CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH
 from cc_agency.commons.helper import batch_failure, USER_SPECIFIED_STDOUT_KEY, USER_SPECIFIED_STDERR_KEY, \
@@ -547,27 +547,12 @@ class ClientProxy:
         stdout_filename = get_gridfs_filename(batch_id, 'stdout')
         stderr_filename = get_gridfs_filename(batch_id, 'stderr')
 
-        stdout_logs_raw = None
-        stderr_logs_raw = None
         try:
-            stdout_logs_raw = container.logs(stderr=False)
-            stderr_logs_raw = container.logs(stdout=False)
+            stdout_logs = container.logs(stderr=False).decode('utf-8')
+            stderr_logs = container.logs(stdout=False).decode('utf-8')
 
-            # helper function for convenience
-            def write_stdout_stderr_to_gridfs():
-                self._mongo.write_file(stdout_filename, stdout_logs_raw)
-                self._mongo.write_file(stderr_filename, stderr_logs_raw)
-
-            stdout_logs = stdout_logs_raw.decode('utf-8')
-            stderr_logs = stderr_logs_raw.decode('utf-8')
             docker_stats = container.stats(stream=False)
         except Exception as e:
-            # here write_stdout_stderr_to_gridfs may not be defined, so do it by hand
-            if stdout_logs_raw is not None:
-                self._mongo.write_file(stdout_filename, stdout_logs_raw)
-            if stderr_logs_raw is not None:
-                self._mongo.write_file(stderr_filename, stderr_logs_raw)
-
             err_str = repr(e)
             self._log('Failed to get container logs:\n{}'.format(err_str))
             debug_info = 'Could not get logs or stats of container: {}'.format(err_str)
@@ -578,12 +563,23 @@ class ClientProxy:
         try:
             data = json.loads(stdout_logs)
         except json.JSONDecodeError as e:
-            write_stdout_stderr_to_gridfs()
             err_str = repr(e)
             debug_info = 'CC-Agent data is not a valid json object: {}\n\nstdout was:\n{}'.format(err_str, stdout_logs)
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
             self._log('Failed to load json from restricted red agent:\n{}'.format(err_str))
             return
+
+        container_stdout_path = os.path.join(CONTAINER_OUTPUT_DIR, data['process']['stdout'])
+        container_stderr_path = os.path.join(CONTAINER_OUTPUT_DIR, data['process']['stderr'])
+
+        def write_stdout_stderr_to_gridfs():
+            stdout_archive = retrieve_file_archive(container, container_stdout_path)
+            with get_first_tarfile_member(stdout_archive) as stdout_file:
+                self._mongo.write_file_from_file(stdout_filename, stdout_file)
+
+            stderr_archive = retrieve_file_archive(container, container_stderr_path)
+            with get_first_tarfile_member(stderr_archive) as stderr_file:
+                self._mongo.write_file_from_file(stderr_filename, stderr_file)
 
         try:
             jsonschema.validate(data, agent_result_schema)
@@ -612,9 +608,14 @@ class ClientProxy:
             return
 
         if batch[USER_SPECIFIED_STDOUT_KEY]:
-            self._mongo.write_file(stdout_filename, stdout_logs_raw)
+            stdout_archive = retrieve_file_archive(container, container_stdout_path)
+            with get_first_tarfile_member(stdout_archive) as stdout_file:
+                self._mongo.write_file_from_file(stdout_filename, stdout_file)
+
         if batch[USER_SPECIFIED_STDERR_KEY]:
-            self._mongo.write_file(stderr_filename, stderr_logs_raw)
+            stderr_archive = retrieve_file_archive(container, container_stderr_path)
+            with get_first_tarfile_member(stderr_archive) as stderr_file:
+                self._mongo.write_file_from_file(stderr_filename, stderr_file)
 
         self._mongo.db['batches'].update_one(
             {
