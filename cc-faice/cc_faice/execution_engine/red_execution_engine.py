@@ -425,12 +425,7 @@ def _handle_directory_outputs(host_outdir, outputs, container):
         if container_file_path is None:
             continue
 
-        file_path = os.path.join(CONTAINER_OUTPUT_DIR, container_file_path)
-
-        if not file_path:
-            continue
-
-        _transfer_file(file_path, container, host_outdir)
+        _transfer_file(container_file_path, container, host_outdir)
 
 
 def _transfer_file(container_path, container, host_outdir):
