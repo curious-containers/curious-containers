@@ -8,7 +8,7 @@ from cc_core.commons.files import load_and_read, dump_print
 from cc_core.commons.engines import engine_validation
 from cc_core.commons.red_secrets import get_secret_values
 
-from cc_faice.execution_engine.red_execution_engine import run as run_faice_agent_red, OutputMode
+from cc_faice.execution_engine.red_execution_engine import run as run_faice_execution_engine, OutputMode
 from cc_faice.commons.templates import complete_red_variables
 from red_val.red_validation import red_validation
 
@@ -240,7 +240,7 @@ def run_faice(red_data, preserve_environment, disable_pull, leave_container, ins
     else:
         faice_output_mode = OutputMode.Directory
 
-    result = run_faice_agent_red(
+    result = run_faice_execution_engine(
         red_data=red_data,
         disable_pull=disable_pull,
         leave_container=leave_container,
