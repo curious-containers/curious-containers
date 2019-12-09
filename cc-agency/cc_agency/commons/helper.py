@@ -9,6 +9,7 @@ from bson.objectid import ObjectId
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from gridfs import GridOut
 
 
 USER_SPECIFIED_STDOUT_KEY = 'usedSpecifiedStdout'
@@ -70,7 +71,7 @@ def create_file_flask_response(source_file, auth, authentication_cookie=None):
     authentication cookie.
 
     :param source_file: The data to send back
-    :type source_file: str or bytes
+    :type source_file: str or bytes or GridOut
     :param auth: The auth object to use
     :param authentication_cookie: The value of the authentication cookie
     :return: A flask response object

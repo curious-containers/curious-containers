@@ -140,8 +140,9 @@ def run(args):
     finally:
         # umount directories
         umount_errors = [_format_exception(e) for e in connector_manager.umount_connectors()]
-        umount_errors.insert(0, 'Errors while unmounting directories:')
-        result['debugInfo'] = umount_errors
+        if umount_errors:
+            umount_errors.insert(0, 'Errors while unmounting directories:')
+            result['debugInfo'] = umount_errors
 
     return result
 

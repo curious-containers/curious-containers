@@ -1,7 +1,6 @@
 import os
 from argparse import ArgumentParser
 import atexit
-from pprint import pprint
 
 import zmq
 import pymongo
@@ -39,8 +38,8 @@ def main():
     mongo.db['batches'].create_index([('experimentId', pymongo.ASCENDING)])
     mongo.db['batches'].create_index([('username', pymongo.ASCENDING)])
 
-    print('MongoDB Indexes:')
-    pprint(list(mongo.db['experiments'].list_indexes()) + list(mongo.db['batches'].list_indexes()))
+    # print('MongoDB Indexes:')
+    # pprint(list(mongo.db['experiments'].list_indexes()) + list(mongo.db['batches'].list_indexes()))
 
     # Singletons
     trustee_client = TrusteeClient(conf)

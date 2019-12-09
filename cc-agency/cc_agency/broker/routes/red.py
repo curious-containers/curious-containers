@@ -15,6 +15,8 @@ from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red
 from cc_agency.commons.helper import str_to_bool, create_flask_response, USER_SPECIFIED_STDOUT_KEY, \
     USER_SPECIFIED_STDERR_KEY, get_gridfs_filename, create_file_flask_response
 from cc_agency.commons.secrets import separate_secrets_batch, separate_secrets_experiment
+from cc_agency.commons.db import Mongo
+from cc_agency.broker.auth import Auth
 
 
 def _prepare_red_data(data, user, disable_retry):
@@ -95,7 +97,9 @@ def red_routes(app, mongo, auth, controller, trustee_client):
 
     :param app: The flask app to attach to
     :param mongo: The mongo client
+    :type mongo: Mongo
     :param auth: The authorization module to use
+    :type auth: Auth
     :param controller: The controller to communicate with the scheduler
     :param trustee_client: The trustee client
     """
