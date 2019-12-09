@@ -278,6 +278,9 @@ def red_routes(app, mongo, auth, controller, trustee_client):
         if not o:
             raise NotFound('Could not find batch with id "{}".'.format(batch_id))
 
+        if filename not in ('stdout', 'stderr'):
+            raise BadRequest('Could not transfer "{}". Use "stdout" or "stderr" as filename.'.format(filename))
+
         db_filename = get_gridfs_filename(batch_id, filename)
 
         data = mongo.get_file(db_filename)
