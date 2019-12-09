@@ -335,20 +335,19 @@ def retrieve_file_archive(container, container_path):
 
 def get_first_tarfile_member(tar_file):
     """
-    Returns a file like object of the first member of the given tarfile
+    Returns a file like object of the first member of the given tarfile.
 
     :param tar_file: The tarfile object to get the first member of
     :type tar_file: tarfile.TarFile
-    :return: A file like object containing the data of the first member in the given tarfile
-    """
-    num_members = len(tar_file.getmembers())
-    if num_members != 1:
-        raise AssertionError(
-            'Failed to retrieve file from docker container tar archive. Got {} files but expected one.'
-            .format(num_members)
-        )
 
-    return tar_file.extractfile(tar_file.getmembers()[0])
+    :return: A file like object containing the data of the first member in the given tarfile
+
+    :raise AssertionError: If the given tar file does not contain members
+    """
+    member = tar_file.next()
+    if member is None:
+        raise AssertionError('Given tarfile does not contain a member')
+    return tar_file.extractfile(member)
 
 
 # noinspection PyMethodOverriding
