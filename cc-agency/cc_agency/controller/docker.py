@@ -26,10 +26,10 @@ from cc_agency.commons.secrets import get_experiment_secret_keys, fill_experimen
     get_batch_secret_keys, TrusteeClient
 from cc_core.commons.docker_utils import create_container_with_gpus, create_batch_archive, image_to_str, \
     detect_nvidia_docker_gpus, retrieve_file_archive, get_first_tarfile_member
-from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR,\
+from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR, \
     CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH
 from cc_agency.commons.helper import batch_failure, USER_SPECIFIED_STDOUT_KEY, USER_SPECIFIED_STDERR_KEY, \
-    get_gridfs_filename
+    get_gridfs_filename, STDERR_FILE_KEY, STDOUT_FILE_KEY
 
 INSPECTION_IMAGE = 'docker.io/busybox:latest'
 NVIDIA_INSPECTION_IMAGE = 'nvidia/cuda:8.0-runtime'
@@ -491,7 +491,7 @@ class ClientProxy:
 
         batch_cursor = self._mongo.db['batches'].find(
             {'_id': {'$in': [ObjectId(_id) for _id in exited_containers]}},
-            {'state': 1}
+            {'state': 1, STDOUT_FILE_KEY: 1, STDERR_FILE_KEY: 1}
         )
         resources_freed = False
         for batch in batch_cursor:
@@ -544,8 +544,8 @@ class ClientProxy:
         bson_batch_id = batch['_id']
         batch_id = str(bson_batch_id)
 
-        stdout_filename = get_gridfs_filename(batch_id, 'stdout')
-        stderr_filename = get_gridfs_filename(batch_id, 'stderr')
+        gridfs_stdout_filename = get_gridfs_filename(batch_id, 'stdout')
+        gridfs_stderr_filename = get_gridfs_filename(batch_id, 'stderr')
 
         try:
             stdout_logs = container.logs(stderr=False).decode('utf-8')
@@ -569,17 +569,28 @@ class ClientProxy:
             self._log('Failed to load json from restricted red agent:\n{}'.format(err_str))
             return
 
-        container_stdout_path = os.path.join(CONTAINER_OUTPUT_DIR, data['process']['stdout'])
-        container_stderr_path = os.path.join(CONTAINER_OUTPUT_DIR, data['process']['stderr'])
+        container_stdout_path = batch[STDOUT_FILE_KEY]
+        container_stderr_path = batch[STDERR_FILE_KEY]
 
         def write_stdout_stderr_to_gridfs():
-            stdout_archive = retrieve_file_archive(container, container_stdout_path)
-            with get_first_tarfile_member(stdout_archive) as stdout_file:
-                self._mongo.write_file_from_file(stdout_filename, stdout_file)
+            """
+            Helper function to write the stdout/stderr files of the docker container into mongo gridfs.
+            """
+            try:
+                archive_stdout = retrieve_file_archive(container, container_stdout_path)
+                with get_first_tarfile_member(archive_stdout) as file_stdout:
+                    self._mongo.write_file_from_file(gridfs_stdout_filename, file_stdout)
+            except DockerException:
+                # ignore if the file could not be transferred. This can happen, if the user process did not finish
+                pass
 
-            stderr_archive = retrieve_file_archive(container, container_stderr_path)
-            with get_first_tarfile_member(stderr_archive) as stderr_file:
-                self._mongo.write_file_from_file(stderr_filename, stderr_file)
+            try:
+                archive_stderr = retrieve_file_archive(container, container_stderr_path)
+                with get_first_tarfile_member(archive_stderr) as file_stderr:
+                    self._mongo.write_file_from_file(gridfs_stderr_filename, file_stderr)
+            except DockerException:
+                # ignore if the file could not be transferred. This can happen, if the user process did not finish
+                pass
 
         try:
             jsonschema.validate(data, agent_result_schema)
@@ -610,12 +621,12 @@ class ClientProxy:
         if batch[USER_SPECIFIED_STDOUT_KEY]:
             stdout_archive = retrieve_file_archive(container, container_stdout_path)
             with get_first_tarfile_member(stdout_archive) as stdout_file:
-                self._mongo.write_file_from_file(stdout_filename, stdout_file)
+                self._mongo.write_file_from_file(gridfs_stdout_filename, stdout_file)
 
         if batch[USER_SPECIFIED_STDERR_KEY]:
             stderr_archive = retrieve_file_archive(container, container_stderr_path)
             with get_first_tarfile_member(stderr_archive) as stderr_file:
-                self._mongo.write_file_from_file(stderr_filename, stderr_file)
+                self._mongo.write_file_from_file(gridfs_stderr_filename, stderr_file)
 
         self._mongo.db['batches'].update_one(
             {
@@ -1074,6 +1085,7 @@ class ClientProxy:
 
         restricted_red_batch = restricted_red_batches[0]
 
+        # update stdout/stderr metadata
         self._mongo.db['batches'].update_one(
             {
                 '_id': ObjectId(batch_id)
@@ -1081,7 +1093,9 @@ class ClientProxy:
             {
                 '$set': {
                     USER_SPECIFIED_STDOUT_KEY: restricted_red_batch.stdout_specified_by_user(),
-                    USER_SPECIFIED_STDERR_KEY: restricted_red_batch.stderr_specified_by_user()
+                    USER_SPECIFIED_STDERR_KEY: restricted_red_batch.stderr_specified_by_user(),
+                    STDOUT_FILE_KEY: restricted_red_batch.data['cli']['stdout'],
+                    STDERR_FILE_KEY: restricted_red_batch.data['cli']['stderr']
                 },
             }
         )

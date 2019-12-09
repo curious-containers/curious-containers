@@ -14,6 +14,8 @@ from gridfs import GridOut
 
 USER_SPECIFIED_STDOUT_KEY = 'usedSpecifiedStdout'
 USER_SPECIFIED_STDERR_KEY = 'usedSpecifiedStderr'
+STDOUT_FILE_KEY = 'cliStdout'
+STDERR_FILE_KEY = 'cliStderr'
 
 
 def decode_authentication_cookie(cookie_value):

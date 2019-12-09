@@ -13,7 +13,7 @@ from cc_core.commons.exceptions import exception_format
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red
 
 from cc_agency.commons.helper import str_to_bool, create_flask_response, USER_SPECIFIED_STDOUT_KEY, \
-    USER_SPECIFIED_STDERR_KEY, get_gridfs_filename, create_file_flask_response
+    USER_SPECIFIED_STDERR_KEY, get_gridfs_filename, create_file_flask_response, STDOUT_FILE_KEY, STDERR_FILE_KEY
 from cc_agency.commons.secrets import separate_secrets_batch, separate_secrets_experiment
 from cc_agency.commons.db import Mongo
 from cc_agency.broker.auth import Auth
@@ -82,7 +82,9 @@ def _prepare_red_data(data, user, disable_retry):
             'inputs': rb['inputs'],
             'outputs': rb['outputs'],
             USER_SPECIFIED_STDOUT_KEY: False,
-            USER_SPECIFIED_STDERR_KEY: False
+            USER_SPECIFIED_STDERR_KEY: False,
+            STDOUT_FILE_KEY: None,
+            STDERR_FILE_KEY: None
         }
         batch, additional_secrets = separate_secrets_batch(batch)
         secrets.update(additional_secrets)

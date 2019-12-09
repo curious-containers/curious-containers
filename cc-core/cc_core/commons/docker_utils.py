@@ -318,10 +318,13 @@ def retrieve_file_archive(container, container_path):
     :param container_path: The path inside the container to retrieve. This should be an absolute path.
     :return: A TarFile object with the only member being the specified file
     :rtype: tarfile.TarFile
+
+    :raise DockerException: If the container path does not exists or if the connection to the docker container is
+                            interrupted.
     """
     try:
         bits, _ = container.get_archive(container_path)
-    except DockerException as e:
+    except (DockerException, ConnectionError) as e:
         raise DockerException(str(e))
 
     return tarfile.TarFile(fileobj=ContainerFileBitsWrapper(bits))
