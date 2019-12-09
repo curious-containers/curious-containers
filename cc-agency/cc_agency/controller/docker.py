@@ -569,28 +569,30 @@ class ClientProxy:
             self._log('Failed to load json from restricted red agent:\n{}'.format(err_str))
             return
 
-        container_stdout_path = batch[STDOUT_FILE_KEY]
-        container_stderr_path = batch[STDERR_FILE_KEY]
+        container_stdout_path = batch.get(STDOUT_FILE_KEY)
+        container_stderr_path = batch.get(STDERR_FILE_KEY)
 
         def write_stdout_stderr_to_gridfs():
             """
             Helper function to write the stdout/stderr files of the docker container into mongo gridfs.
             """
-            try:
-                archive_stdout = retrieve_file_archive(container, container_stdout_path)
-                with get_first_tarfile_member(archive_stdout) as file_stdout:
-                    self._mongo.write_file_from_file(gridfs_stdout_filename, file_stdout)
-            except DockerException:
-                # ignore if the file could not be transferred. This can happen, if the user process did not finish
-                pass
+            if container_stdout_path is not None:
+                try:
+                    archive_stdout = retrieve_file_archive(container, container_stdout_path)
+                    with get_first_tarfile_member(archive_stdout) as file_stdout:
+                        self._mongo.write_file_from_file(gridfs_stdout_filename, file_stdout)
+                except DockerException:
+                    # ignore if the file could not be transferred. This can happen, if the user process did not finish
+                    pass
 
-            try:
-                archive_stderr = retrieve_file_archive(container, container_stderr_path)
-                with get_first_tarfile_member(archive_stderr) as file_stderr:
-                    self._mongo.write_file_from_file(gridfs_stderr_filename, file_stderr)
-            except DockerException:
-                # ignore if the file could not be transferred. This can happen, if the user process did not finish
-                pass
+            if container_stderr_path is not None:
+                try:
+                    archive_stderr = retrieve_file_archive(container, container_stderr_path)
+                    with get_first_tarfile_member(archive_stderr) as file_stderr:
+                        self._mongo.write_file_from_file(gridfs_stderr_filename, file_stderr)
+                except DockerException:
+                    # ignore if the file could not be transferred. This can happen, if the user process did not finish
+                    pass
 
         try:
             jsonschema.validate(data, agent_result_schema)
