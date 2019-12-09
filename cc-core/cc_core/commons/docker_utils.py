@@ -413,8 +413,8 @@ class ContainerFileBitsWrapper(io.RawIOBase):
         if offset < self._read_offset:
             if offset < self._chunk_offset:
                 raise ValueError(
-                    'Cannot get bytes from the past.\ncurrent offset={}\nseeked offset={}'
-                    .format(self._read_offset, offset)
+                    'Cannot get bytes from the past.\ncurrent offset={}\nseeked offset={}\nchunk offset={}'
+                    .format(self._read_offset, offset, self._chunk_offset)
                 )
             else:
                 self._read_offset = offset
