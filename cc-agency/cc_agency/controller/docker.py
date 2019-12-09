@@ -569,8 +569,8 @@ class ClientProxy:
             self._log('Failed to load json from restricted red agent:\n{}'.format(err_str))
             return
 
-        container_stdout_path = batch.get(STDOUT_FILE_KEY)
-        container_stderr_path = batch.get(STDERR_FILE_KEY)
+        container_stdout_path = os.path.join(CONTAINER_OUTPUT_DIR, batch.get(STDOUT_FILE_KEY))
+        container_stderr_path = os.path.join(CONTAINER_OUTPUT_DIR, batch.get(STDERR_FILE_KEY))
 
         def write_stdout_stderr_to_gridfs():
             """
@@ -620,15 +620,28 @@ class ClientProxy:
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
             return
 
+        # from here it is expected that the batch was successful
         if batch[USER_SPECIFIED_STDOUT_KEY]:
-            stdout_archive = retrieve_file_archive(container, container_stdout_path)
-            with get_first_tarfile_member(stdout_archive) as stdout_file:
-                self._mongo.write_file_from_file(gridfs_stdout_filename, stdout_file)
+            try:
+                stdout_archive = retrieve_file_archive(container, container_stdout_path)
+                with get_first_tarfile_member(stdout_archive) as stdout_file:
+                    self._mongo.write_file_from_file(gridfs_stdout_filename, stdout_file)
+            except DockerException as e:
+                print(
+                    'Failed to create stdout for batch {}. Failed with the following message:\n{}'
+                    .format(batch_id, str(e))
+                )
 
         if batch[USER_SPECIFIED_STDERR_KEY]:
-            stderr_archive = retrieve_file_archive(container, container_stderr_path)
-            with get_first_tarfile_member(stderr_archive) as stderr_file:
-                self._mongo.write_file_from_file(gridfs_stderr_filename, stderr_file)
+            try:
+                stderr_archive = retrieve_file_archive(container, container_stderr_path)
+                with get_first_tarfile_member(stderr_archive) as stderr_file:
+                    self._mongo.write_file_from_file(gridfs_stderr_filename, stderr_file)
+            except DockerException as e:
+                print(
+                    'Failed to create stderr for batch {}. Failed with the following message:\n{}'
+                    .format(batch_id, str(e))
+                )
 
         self._mongo.db['batches'].update_one(
             {
