@@ -411,7 +411,10 @@ class ContainerFileBitsWrapper(io.RawIOBase):
 
     def seek(self, offset):
         if offset < self._current_offset:
-            raise ValueError('Cannot get bytes from the past')
+            raise ValueError(
+                'Cannot get bytes from the past.\ncurrent offset={}\nseeked offset={}'
+                .format(self._current_offset, offset)
+            )
 
         while offset > self._get_chunk_end():
             try:

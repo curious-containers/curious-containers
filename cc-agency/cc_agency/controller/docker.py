@@ -572,27 +572,37 @@ class ClientProxy:
         container_stdout_path = os.path.join(CONTAINER_OUTPUT_DIR, batch.get(STDOUT_FILE_KEY))
         container_stderr_path = os.path.join(CONTAINER_OUTPUT_DIR, batch.get(STDERR_FILE_KEY))
 
-        def write_stdout_stderr_to_gridfs():
+        def write_stdout_stderr_to_gridfs(include_stdout=True, include_stderr=True):
             """
             Helper function to write the stdout/stderr files of the docker container into mongo gridfs.
+
+            :return: A list of strings describing the errors that occurred during transferring the files.
+            :rtype: list[str]
             """
-            if container_stdout_path is not None:
+            errors = []
+            if include_stdout and container_stdout_path is not None:
                 try:
                     archive_stdout = retrieve_file_archive(container, container_stdout_path)
                     with get_first_tarfile_member(archive_stdout) as file_stdout:
                         self._mongo.write_file_from_file(gridfs_stdout_filename, file_stdout)
-                except DockerException:
-                    # ignore if the file could not be transferred. This can happen, if the user process did not finish
-                    pass
+                except DockerException as ex:
+                    errors.append(
+                        'Failed to create stdout for batch {}. Failed with the following message:\n{}'
+                        .format(batch_id, str(ex))
+                    )
 
-            if container_stderr_path is not None:
+            if include_stderr and container_stderr_path is not None:
                 try:
                     archive_stderr = retrieve_file_archive(container, container_stderr_path)
                     with get_first_tarfile_member(archive_stderr) as file_stderr:
                         self._mongo.write_file_from_file(gridfs_stderr_filename, file_stderr)
-                except DockerException:
-                    # ignore if the file could not be transferred. This can happen, if the user process did not finish
-                    pass
+                except DockerException as ex:
+                    errors.append(
+                        'Failed to create stderr for batch {}. Failed with the following message:\n{}'
+                        .format(batch_id, str(ex))
+                    )
+
+            return errors
 
         try:
             jsonschema.validate(data, agent_result_schema)
@@ -621,27 +631,10 @@ class ClientProxy:
             return
 
         # from here it is expected that the batch was successful
-        if batch[USER_SPECIFIED_STDOUT_KEY]:
-            try:
-                stdout_archive = retrieve_file_archive(container, container_stdout_path)
-                with get_first_tarfile_member(stdout_archive) as stdout_file:
-                    self._mongo.write_file_from_file(gridfs_stdout_filename, stdout_file)
-            except DockerException as e:
-                print(
-                    'Failed to create stdout for batch {}. Failed with the following message:\n{}'
-                    .format(batch_id, str(e))
-                )
-
-        if batch[USER_SPECIFIED_STDERR_KEY]:
-            try:
-                stderr_archive = retrieve_file_archive(container, container_stderr_path)
-                with get_first_tarfile_member(stderr_archive) as stderr_file:
-                    self._mongo.write_file_from_file(gridfs_stderr_filename, stderr_file)
-            except DockerException as e:
-                print(
-                    'Failed to create stderr for batch {}. Failed with the following message:\n{}'
-                    .format(batch_id, str(e))
-                )
+        debug_info = write_stdout_stderr_to_gridfs(
+            include_stdout=batch[USER_SPECIFIED_STDOUT_KEY],
+            include_stderr=batch[USER_SPECIFIED_STDERR_KEY]
+        )
 
         self._mongo.db['batches'].update_one(
             {
@@ -656,7 +649,7 @@ class ClientProxy:
                     'history': {
                         'state': 'succeeded',
                         'time': time.time(),
-                        'debugInfo': None,
+                        'debugInfo': debug_info or None,
                         'node': batch['node'],
                         'ccagent': data,
                         'dockerStats': docker_stats
