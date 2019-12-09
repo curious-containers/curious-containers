@@ -330,7 +330,7 @@ def retrieve_file_archive(container, container_path):
     except (DockerException, ConnectionError) as e:
         raise DockerException(str(e))
 
-    return tarfile.TarFile(fileobj=ContainerFileBitsWrapper(bits), mode='r|*')
+    return tarfile.open(fileobj=ContainerFileBitsWrapper(bits), mode='r|*')
 
 
 def get_first_tarfile_member(tar_file):
