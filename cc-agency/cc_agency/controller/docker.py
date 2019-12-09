@@ -585,7 +585,7 @@ class ClientProxy:
                     archive_stdout = retrieve_file_archive(container, container_stdout_path)
                     with get_first_tarfile_member(archive_stdout) as file_stdout:
                         self._mongo.write_file_from_file(gridfs_stdout_filename, file_stdout)
-                except DockerException as ex:
+                except (DockerException, ValueError) as ex:
                     errors.append(
                         'Failed to create stdout for batch {}. Failed with the following message:\n{}'
                         .format(batch_id, str(ex))
@@ -596,7 +596,7 @@ class ClientProxy:
                     archive_stderr = retrieve_file_archive(container, container_stderr_path)
                     with get_first_tarfile_member(archive_stderr) as file_stderr:
                         self._mongo.write_file_from_file(gridfs_stderr_filename, file_stderr)
-                except DockerException as ex:
+                except (DockerException, ValueError) as ex:
                     errors.append(
                         'Failed to create stderr for batch {}. Failed with the following message:\n{}'
                         .format(batch_id, str(ex))
