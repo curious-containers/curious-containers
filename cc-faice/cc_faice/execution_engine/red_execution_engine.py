@@ -10,7 +10,7 @@ from typing import List
 from enum import Enum
 from uuid import uuid4
 
-from cc_core.commons.docker_utils import create_batch_archive, retrieve_file_archive
+from cc_core.commons.docker_utils import create_batch_archive, retrieve_file_archive, get_first_tarfile_member
 from cc_core.commons.engines import engine_validation
 from cc_core.commons.exceptions import print_exception, exception_format, AgentError, JobExecutionError
 from cc_core.commons.gpu_info import get_gpu_requirements, match_gpus, InsufficientGPUError
@@ -484,14 +484,8 @@ def _handle_stdout_stderr_on_failure(host_outdir, restricted_red_batch, containe
 
         try:
             with retrieve_file_archive(container, container_path) as file_archive:
-                num_members = len(file_archive.getmembers())
-                if num_members != 1:
-                    raise AssertionError(
-                        'Failed to retrieve {}. Got {} files but expected one.'.format(out_err, num_members)
-                    )
-
                 # copy archive file to outputs directory
-                with file_archive.extractfile(file_archive.getmembers()[0]) as source_file:
+                with get_first_tarfile_member(file_archive) as source_file:
                     with open(host_file_path, 'wb') as target_file:
                         for line in source_file.readlines():
                             target_file.write(line)
