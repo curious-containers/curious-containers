@@ -315,7 +315,10 @@ def retrieve_file_archive(container, container_path):
     Retrieves the file given by container_path as TarFile object with only one member.
 
     :param container: The container to retrieve the file from
+    :type container: Container
     :param container_path: The path inside the container to retrieve. This should be an absolute path.
+    :type container_path: str
+
     :return: A TarFile object with the only member being the specified file
     :rtype: tarfile.TarFile
 
@@ -327,7 +330,7 @@ def retrieve_file_archive(container, container_path):
     except (DockerException, ConnectionError) as e:
         raise DockerException(str(e))
 
-    return tarfile.TarFile(fileobj=ContainerFileBitsWrapper(bits))
+    return tarfile.TarFile(fileobj=ContainerFileBitsWrapper(bits), mode='r|*')
 
 
 def get_first_tarfile_member(tar_file):

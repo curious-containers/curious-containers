@@ -15,7 +15,7 @@ from typing import List
 from enum import Enum
 from uuid import uuid4
 
-from cc_core.commons.docker_utils import create_batch_archive
+from cc_core.commons.docker_utils import create_batch_archive, retrieve_file_archive
 from cc_core.commons.engines import engine_validation
 from cc_core.commons.exceptions import print_exception, exception_format, AgentError, JobExecutionError
 from cc_core.commons.files import load_and_read, dump_print
@@ -504,7 +504,7 @@ def _handle_directory_outputs(host_outdir, outputs, container, docker_manager):
             continue
 
         try:
-            file_archive = docker_manager.get_file_archive(container, file_path)
+            file_archive = retrieve_file_archive(container, file_path)
         except AgentError as e:
             raise AgentError(
                 'Could not retrieve output file "{}" with path "{}" from docker container. '

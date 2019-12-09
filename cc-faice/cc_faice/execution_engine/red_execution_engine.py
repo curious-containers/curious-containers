@@ -10,7 +10,7 @@ from typing import List
 from enum import Enum
 from uuid import uuid4
 
-from cc_core.commons.docker_utils import create_batch_archive
+from cc_core.commons.docker_utils import create_batch_archive, retrieve_file_archive
 from cc_core.commons.engines import engine_validation
 from cc_core.commons.exceptions import print_exception, exception_format, AgentError, JobExecutionError
 from cc_core.commons.gpu_info import get_gpu_requirements, match_gpus, InsufficientGPUError
@@ -444,7 +444,7 @@ def _transfer_file(container_path, container, host_outdir):
     """
     abs_container_path = os.path.join(CONTAINER_OUTPUT_DIR, container_path)
     try:
-        with DockerManager.get_file_archive(container, abs_container_path) as file_archive:
+        with retrieve_file_archive(container, abs_container_path) as file_archive:
             file_archive.extractall(host_outdir)
     except AgentError as e:
         raise AgentError(
@@ -483,7 +483,7 @@ def _handle_stdout_stderr_on_failure(host_outdir, restricted_red_batch, containe
         host_file_path = os.path.join(host_outdir, host_file_name)
 
         try:
-            with DockerManager.get_file_archive(container, container_path) as file_archive:
+            with retrieve_file_archive(container, container_path) as file_archive:
                 num_members = len(file_archive.getmembers())
                 if num_members != 1:
                     raise AssertionError(

@@ -255,25 +255,3 @@ class DockerManager:
         stats = container.stats(stream=False)
 
         return AgentExecutionResult(return_code, stdout, stderr, stats)
-
-    @staticmethod
-    def get_file_archive(container, file_path):
-        """
-        Retrieves the given file path as tar-archive from the given docker container.
-
-        :param container: The container to get the archive from
-        :type container: Container
-        :param file_path: A file path inside the docker container
-        :type file_path: str
-
-        :return: A tar archive, which corresponds to the given file path
-        :rtype: tarfile.TarFile
-
-        :raise AgentError: If the given file could not be fetched
-        """
-        try:
-            bits, _ = container.get_archive(file_path)
-        except DockerException as e:
-            raise AgentError(str(e))
-
-        return tarfile.TarFile(fileobj=ContainerFileBitsWrapper(bits))
