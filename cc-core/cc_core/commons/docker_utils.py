@@ -361,7 +361,7 @@ class ContainerFileBitsWrapper(io.RawIOBase):
         self._bits = bits
         self._chunk_offset = 0  # the offset of the first bit in the current _chunk, in respect to the hole stream
         self._chunk = bytes(0)  # The current chunk
-        self._current_offset = 0  # The current read offset in the chunk
+        self._read_offset = 0  # The current read offset in the chunk, in respect to the hole stream
 
     def _read_next(self):
         chunk_len = len(self._chunk)
@@ -383,7 +383,7 @@ class ContainerFileBitsWrapper(io.RawIOBase):
         :return: A bytes object containing n bytes
         :rtype: bytes
         """
-        end = self._current_offset + n
+        end = self._read_offset + n
 
         tmp_chunk_offset = self._chunk_offset
         tmp_chunk = self._chunk
@@ -395,12 +395,12 @@ class ContainerFileBitsWrapper(io.RawIOBase):
                 break
             tmp_chunk += self._chunk
 
-        result = tmp_chunk[self._current_offset-tmp_chunk_offset:end-tmp_chunk_offset]
-        self._current_offset = end
+        result = tmp_chunk[self._read_offset - tmp_chunk_offset:end - tmp_chunk_offset]
+        self._read_offset = end
         return result
 
     def tell(self):
-        return self._current_offset
+        return self._read_offset
 
     def write(self, size):
         raise io.UnsupportedOperation('Can not write to ContainerFileBitsWrapper')
@@ -410,11 +410,14 @@ class ContainerFileBitsWrapper(io.RawIOBase):
         self._chunk = None
 
     def seek(self, offset):
-        if offset < self._current_offset:
-            raise ValueError(
-                'Cannot get bytes from the past.\ncurrent offset={}\nseeked offset={}'
-                .format(self._current_offset, offset)
-            )
+        if offset < self._read_offset:
+            if offset < self._chunk_offset:
+                raise ValueError(
+                    'Cannot get bytes from the past.\ncurrent offset={}\nseeked offset={}'
+                    .format(self._read_offset, offset)
+                )
+            else:
+                self._read_offset = offset
 
         while offset > self._get_chunk_end():
             try:
@@ -422,8 +425,8 @@ class ContainerFileBitsWrapper(io.RawIOBase):
             except StopIteration:
                 break
 
-        self._current_offset = offset
-        return self._current_offset
+        self._read_offset = offset
+        return self._read_offset
 
     def fileno(self):
         raise OSError('ContainerFileBitsWrapper does not use a underlying file object.')
