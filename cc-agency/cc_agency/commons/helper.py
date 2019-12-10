@@ -18,6 +18,41 @@ STDOUT_FILE_KEY = 'cliStdout'
 STDERR_FILE_KEY = 'cliStderr'
 
 
+def str_to_bool(s):
+    """
+    Converts the given string into a boolean.
+
+    Values resulting in True:
+    - a string representing an integer != 0
+    - the string 'true' ignoring upper/lower case
+    - the string 'y' or 'yes' ignoring upper/lower case
+
+    Other values will result in False as return value.
+
+    :param s: The string to convert
+    :type s: str
+    :return: A boolean value
+    :rtype: bool
+    """
+    if isinstance(s, bool):
+        return s
+
+    if not isinstance(s, str):
+        return False
+
+    if s.lower() in ('true', 'yes', 'y'):
+        return True
+
+    try:
+        i = int(s)
+        if i != 0:
+            return True
+    except ValueError:
+        pass
+
+    return False
+
+
 def decode_authentication_cookie(cookie_value):
     """
     Extracts the username and value from the given cookie value.
@@ -217,9 +252,3 @@ def batch_failure(
             }
         }
     )
-
-
-def str_to_bool(s):
-    if isinstance(s, str) and s.lower() in ['1', 'true']:
-        return True
-    return False

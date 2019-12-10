@@ -129,7 +129,7 @@ def red_routes(app, mongo, auth, controller, trustee_client):
             raise BadRequest('Did not send RED data as JSON.')
 
         data = request.json
-        disable_retry = bool(request.args.get('disableRetry', False))
+        disable_retry = str_to_bool(request.args.get('disableRetry', default=False))
 
         try:
             red_validation(data, False)
