@@ -110,6 +110,7 @@ class CliJobPair:
     def check_type(self):
         """
         Checks whether the job value type fits to the cli description
+
         :raises RedSpecificationError: if cli_description and job value have incompatible types
         """
         try:
@@ -265,11 +266,11 @@ def _check_input_type(input_value, cli_description_type):
     """
     input_type = InputType.from_string(cli_description_type)
 
-    # check for optional arguments
+    # check whether job value is specified
     if input_value is None:
         if input_type.is_optional():
             return
-        raise RedSpecificationError('job value is missing and not optional')
+        raise RedSpecificationError('Input value specification is missing and not optional.')
 
     # check for arrays
     # after this block input_value is always an array and an error is thrown, if input value has wrong list type
@@ -309,15 +310,14 @@ def _check_output_type(output_value, cli_description_type):
     Checks whether the type of the given output value matches the type of the given cli description.
     :param output_value: The output value whose type to check
     :param cli_description_type: The cwl type description of the output key
+
     :raise RedSpecificationError: If actual output type does not match type of cli description
     """
     output_type = OutputType.from_string(cli_description_type)
 
-    # check for optional arguments
+    # check whether the job value is specified
     if output_value is None:
-        if output_type.is_optional():
-            return
-        raise RedSpecificationError('job value is missing and not optional')
+        return
 
     set_of_possible_value_types = CWL_OUTPUT_TYPE_TO_PYTHON_TYPE[output_type.output_category]
     if type(output_value) not in set_of_possible_value_types:
