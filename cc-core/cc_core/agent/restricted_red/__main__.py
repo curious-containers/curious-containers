@@ -9,14 +9,13 @@ import stat
 import subprocess
 import json
 import tempfile
-import urllib.request
 
 from argparse import ArgumentParser
 from functools import total_ordering
 from json import JSONDecodeError
 from traceback import format_exc
 from typing import List, Dict
-from urllib.parse import urlparse
+
 
 DESCRIPTION = 'Run an experiment as described in a RESTRICTED_RED_FILE.'
 JSON_INDENT = 2
@@ -156,42 +155,17 @@ def get_restricted_red_data(restricted_red_location):
     """
     try:
         with open(restricted_red_location, 'r') as restricted_red_file:
-            try:
-                return json.load(restricted_red_file)
-            except JSONDecodeError as e:
-                raise ExecutionError(
-                    'Could not parse restricted RED file "{}". File is not json formatted.\n{}'
-                    .format(restricted_red_location, str(e))
-                )
+            return json.load(restricted_red_file)
     except FileNotFoundError as file_error:
         raise ExecutionError(
             'Could not find restricted RED file "{}" locally. Failed with the following message:\n{}'
             .format(restricted_red_location, str(file_error))
         )
-
-
-def _is_file_scheme_local(file_scheme):
-    return file_scheme == 'path' or file_scheme == ''
-
-
-def _is_file_scheme_remote(file_scheme):
-    return file_scheme == 'http' or file_scheme == 'https'
-
-
-def _post_result(url, result):
-    """
-    Posts the given result dictionary to the given url
-
-    :param url: The url to post the result to
-    :param result: The result to post
-    """
-    bytes_data = bytes(json.dumps(result), encoding='utf-8')
-
-    request = urllib.request.Request(url, data=bytes_data)
-    request.add_header('Content-Type', 'application/json')
-
-    # ignore response here
-    urllib.request.urlopen(request)
+    except JSONDecodeError as e:
+        raise ExecutionError(
+            'Could not parse restricted RED file "{}". File is not json formatted.\n{}'
+            .format(restricted_red_location, str(e))
+        )
 
 
 def _validate_command(command):
@@ -209,22 +183,6 @@ def _validate_command(command):
                 'Invalid RESTRICTED_RED_FILE. "command" has to be a list of strings.\ncommand: "{}"\n'
                 '"{}" is not a string'.format(command, s)
             )
-
-
-def _create_text_file(lines, path):
-    """
-    Creates a file with the given path and fills it with lines. The file is located in the current working directory.
-    This function is meant for creating the stdout/stderr file after a command execution has been successful.
-
-    :param lines: The content of the file to create
-    :type lines: List[str]
-    :param path: The path of the file to create. If path is None, this function does nothing
-    :type path: str
-    """
-    if path:
-        with open(os.path.abspath(path), 'w') as f:
-            for line in lines:
-                f.write(line + '\n')
 
 
 def is_directory_writable(d):
@@ -1039,77 +997,97 @@ class InputConnectorRunner01(InputConnectorRunner):
     """
 
     def receive_file(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'receive-file',
-                                             access=self._access,
-                                             path=self._path)
+        execution_result = execute_connector(
+            self._connector_command,
+            'receive-file',
+            access=self._access,
+            path=self._path
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to receive file for input key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self.format_input_key(), execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to receive file for input key "{}".\nFailed with the following message:\n{}'
+                .format(self.format_input_key(), execution_result.get_std_err())
+            )
 
     def receive_file_validate(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'receive-file-validate',
-                                             access=self._access)
+        execution_result = execute_connector(
+            self._connector_command,
+            'receive-file-validate',
+            access=self._access
+        )
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to validate receive file for input key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self.format_input_key(), execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to validate receive file for input key "{}".\nFailed with the following message:\n{}'
+                .format(self.format_input_key(), execution_result.get_std_err())
+            )
 
     def receive_dir(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'receive-dir',
-                                             access=self._access,
-                                             path=self._path,
-                                             listing=self._listing)
+        execution_result = execute_connector(
+            self._connector_command,
+            'receive-dir',
+            access=self._access,
+            path=self._path,
+            listing=self._listing
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to receive directory for input key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self.format_input_key(), execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to receive directory for input key "{}".\nFailed with the following message:\n{}'
+                .format(self.format_input_key(), execution_result.get_std_err())
+            )
 
     def receive_dir_validate(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'receive-dir-validate',
-                                             access=self._access,
-                                             listing=self._listing)
+        execution_result = execute_connector(
+            self._connector_command,
+            'receive-dir-validate',
+            access=self._access,
+            listing=self._listing
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to validate receive directory for input key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self.format_input_key(), execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to validate receive directory for input key "{}".\n'
+                'Failed with the following message:\n{}'
+                .format(self.format_input_key(), execution_result.get_std_err())
+            )
 
     def mount_dir(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'mount-dir',
-                                             access=self._access,
-                                             path=self._path)
+        execution_result = execute_connector(
+            self._connector_command,
+            'mount-dir',
+            access=self._access,
+            path=self._path
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to mount directory for input key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self.format_input_key(), execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to mount directory for input key "{}".\nFailed with the following message:\n{}'
+                .format(self.format_input_key(), execution_result.get_std_err())
+            )
 
     def mount_dir_validate(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'mount-dir-validate',
-                                             access=self._access)
+        execution_result = execute_connector(
+            self._connector_command,
+            'mount-dir-validate',
+            access=self._access
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to validate mount directory for input key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self.format_input_key(), execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to validate mount directory for input key "{}".\n'
+                'Failed with the following message:\n{}'
+                .format(self.format_input_key(), execution_result.get_std_err())
+            )
 
     def umount_dir(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'umount-dir', path=self._path)
+        execution_result = execute_connector(self._connector_command, 'umount-dir', path=self._path)
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to umount directory for input key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self.format_input_key(), execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to umount directory for input key "{}".\nFailed with the following message:\n{}'
+                .format(self.format_input_key(), execution_result.get_std_err())
+            )
 
 
 class OutputConnectorRunner01(OutputConnectorRunner):
@@ -1118,48 +1096,62 @@ class OutputConnectorRunner01(OutputConnectorRunner):
     """
 
     def send_file(self, path):
-        execution_result = execute_connector(self._connector_command,
-                                             'send-file',
-                                             access=self._access,
-                                             path=path)
+        execution_result = execute_connector(
+            self._connector_command,
+            'send-file',
+            access=self._access,
+            path=path
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to send file for output key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self._output_key, execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to send file for output key "{}".\nFailed with the following message:\n{}'
+                .format(self._output_key, execution_result.get_std_err())
+            )
 
     def send_file_validate(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'send-file-validate',
-                                             access=self._access)
+        execution_result = execute_connector(
+            self._connector_command,
+            'send-file-validate',
+            access=self._access
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to validate send file for output key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self._output_key, execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to validate send file for output key "{}".\nFailed with the following message:\n{}'
+                .format(self._output_key, execution_result.get_std_err())
+            )
 
     def send_dir(self, path):
-        execution_result = execute_connector(self._connector_command,
-                                             'send-dir',
-                                             access=self._access,
-                                             path=path,
-                                             listing=self._listing)
+        execution_result = execute_connector(
+            self._connector_command,
+            'send-dir',
+            access=self._access,
+            path=path,
+            listing=self._listing
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to validate send directory for output key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self._output_key, execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to validate send directory for output key "{}".\n'
+                'Failed with the following message:\n{}'
+                .format(self._output_key, execution_result.get_std_err())
+            )
 
     def send_dir_validate(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'send-dir-validate',
-                                             access=self._access,
-                                             listing=self._listing)
+        execution_result = execute_connector(
+            self._connector_command,
+            'send-dir-validate',
+            access=self._access,
+            listing=self._listing
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to validate send directory for output key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self._output_key, execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to validate send directory for output key "{}".\n'
+                'Failed with the following message:\n{}'
+                .format(self._output_key, execution_result.get_std_err())
+            )
 
 
 CONNECTOR_CLI_VERSION_INPUT_RUNNER_MAPPING = {
@@ -1233,16 +1225,18 @@ def create_input_connector_runner(input_key, input_value, input_index, assert_cl
         raise Exception('This agent does not support connector cli-version "{}", but needed by connector "{}"'
                         .format(cli_version, connector_command))
 
-    connector_runner = connector_runner_class(input_key,
-                                              input_index,
-                                              connector_command,
-                                              input_class,
-                                              mount,
-                                              access,
-                                              path,
-                                              listing,
-                                              checksum,
-                                              size)
+    connector_runner = connector_runner_class(
+        input_key,
+        input_index,
+        connector_command,
+        input_class,
+        mount,
+        access,
+        path,
+        listing,
+        checksum,
+        size
+    )
 
     return connector_runner
 
@@ -1253,12 +1247,14 @@ CONNECTOR_CLI_VERSION_OUTPUT_RUNNER_MAPPING = {
 }
 
 
-def create_output_connector_runner(output_key,
-                                   output_value,
-                                   cli_output_value,
-                                   connector_cli_version_cache,
-                                   cli_stdout,
-                                   cli_stderr):
+def create_output_connector_runner(
+        output_key,
+        output_value,
+        cli_output_value,
+        connector_cli_version_cache,
+        cli_stdout,
+        cli_stderr
+):
     """
     Creates a proper OutputConnectorRunner instance for the given connector command.
 
@@ -1318,12 +1314,14 @@ def create_output_connector_runner(output_key,
         raise Exception('This agent does not support connector cli-version "{}", but needed by connector "{}"'
                         .format(cli_version, connector_command))
 
-    connector_runner = connector_runner_class(output_key,
-                                              connector_command,
-                                              output_class,
-                                              access,
-                                              glob_pattern,
-                                              listing)
+    connector_runner = connector_runner_class(
+        output_key,
+        connector_command,
+        output_class,
+        access,
+        glob_pattern,
+        listing
+    )
 
     return connector_runner
 
