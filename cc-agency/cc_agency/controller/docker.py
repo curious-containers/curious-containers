@@ -1017,13 +1017,14 @@ class ClientProxy:
         if existing_container is not None:
             existing_container.remove(force=True)
 
+        # the user argument is not set to use the user specified by the docker image
         container = create_container_with_gpus(
             client=self._client,
             image=image,
             command=command,
             available_runtimes=self._runtimes,
             name=batch_id,
-            user='1000:1000',
+            # user='1000:1000',
             working_dir=CONTAINER_OUTPUT_DIR,
             detach=True,
             mem_limit=mem_limit,

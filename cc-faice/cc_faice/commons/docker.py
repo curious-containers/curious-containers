@@ -173,6 +173,7 @@ class DockerManager:
             devices.append('/dev/fuse')
             capabilities.append('SYS_ADMIN')
 
+        # the user argument is not set to use the user specified by the docker image
         container = create_container_with_gpus(
             self._client,
             image,
@@ -180,7 +181,7 @@ class DockerManager:
             gpus=gpu_ids,
             available_runtimes=self._runtimes,
             name=name,
-            user='1000:1000',
+            # user='1000:1000',
             working_dir=working_directory,
             mem_limit=mem_limit,
             memswap_limit=mem_limit,
