@@ -199,7 +199,8 @@ def batch_failure(
     :type current_state: str
     :param disable_retry_if_failed: If set to True, the batch is failed immediately, without giving another attempt
     :param docker_stats: The optional stats of the docker container, that will written under the "docker_stats" key in
-                         the history of this batch
+                         the history of this batch.
+                         This feature is not implemented at the moment.
     :type docker_stats: dict
     """
     if current_state in ['succeeded', 'failed', 'cancelled']:
@@ -233,6 +234,9 @@ def batch_failure(
             new_state = 'failed'
             new_node = node_name
 
+    # dont use docker stats, because they do not contain useful information
+    del docker_stats
+
     mongo.db['batches'].update_one(
         {'_id': bson_id, 'state': current_state},
         {
@@ -247,7 +251,7 @@ def batch_failure(
                     'debugInfo': debug_info,
                     'node': new_node,
                     'ccagent': ccagent,
-                    'dockerStats': docker_stats
+                    # 'dockerStats': docker_stats
                 }
             }
         }
