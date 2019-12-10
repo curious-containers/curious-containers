@@ -21,7 +21,6 @@ ccagency_schema = {
             'additionalProperties': False,
             'required': ['url']
         },
-        'retryIfFailed': {'type': 'boolean'},
         'batchConcurrencyLimit': {'type': 'integer', 'minimum': 1}
         # disablePull might be data breach, if another users image has been pulled to host already
         # 'disablePull': {'type': 'boolean'}
