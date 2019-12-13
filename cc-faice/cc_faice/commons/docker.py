@@ -96,8 +96,8 @@ class DockerManager:
             info = self._client.info()  # This raises a ConnectionError, if the docker socket was not found
         except ConnectionError:
             raise DockerException('Could not connect to docker socket. Is the docker daemon running?')
-        except DockerException:
-            raise DockerException('Could not create docker client from environment.')
+        except DockerException as e:
+            raise DockerException('Could not create docker client from environment.\n{}'.format(str(e)))
 
         self._runtimes = info.get('Runtimes')
 
