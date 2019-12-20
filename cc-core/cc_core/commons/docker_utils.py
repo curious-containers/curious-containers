@@ -317,7 +317,7 @@ def retrieve_file_archive(container, container_path):
     :param container: The container to retrieve the file from
     :type container: Container
     :param container_path: The path inside the container to retrieve. This should be an absolute path.
-    :type container_path: str
+    :type container_path: PurePosixPath
 
     :return: A TarFile object with the only member being the specified file
     :rtype: tarfile.TarFile

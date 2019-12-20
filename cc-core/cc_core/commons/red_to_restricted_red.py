@@ -16,15 +16,16 @@ These steps are now performed by the agent
 from copy import deepcopy
 import os.path
 import uuid
+from pathlib import PurePosixPath
 
 from cc_core.commons.exceptions import InvalidInputReference
 from cc_core.commons.input_references import resolve_input_references
 from red_val.red_types import InputType
 
-CONTAINER_OUTPUT_DIR = '/cc/outputs'
-CONTAINER_INPUT_DIR = '/cc/inputs'
-CONTAINER_AGENT_PATH = '/cc/restricted_red_agent.py'
-CONTAINER_RESTRICTED_RED_FILE_PATH = '/cc/restricted_red_file.json'
+CONTAINER_OUTPUT_DIR = PurePosixPath('/cc/outputs')
+CONTAINER_INPUT_DIR = PurePosixPath('/cc/inputs')
+CONTAINER_AGENT_PATH = PurePosixPath('/cc/restricted_red_agent.py')
+CONTAINER_RESTRICTED_RED_FILE_PATH = PurePosixPath('/cc/restricted_red_file.json')
 
 
 class RestrictedRedBatch:
@@ -218,7 +219,7 @@ def default_inputs_dirname():
 
     :return: The default dirname for an input file.
     """
-    return os.path.join(CONTAINER_INPUT_DIR, str(uuid.uuid4()))
+    return CONTAINER_OUTPUT_DIR / str(uuid.uuid4())
 
 
 def complete_file_input_values(input_key, input_value):
@@ -231,25 +232,26 @@ def complete_file_input_values(input_key, input_value):
     """
     # define basename
     if 'basename' in input_value:
-        basename = input_value['basename']
+        basename = PurePosixPath(input_value['basename'])
     else:
-        basename = input_key
-        input_value['basename'] = basename
+        basename = PurePosixPath(input_key)
+        input_value['basename'] = basename.as_posix()
 
     # define dirname
     if 'dirname' in input_value:
-        dirname = input_value['dirname']
+        dirname = PurePosixPath(input_value['dirname'])
     else:
         dirname = default_inputs_dirname()
-        input_value['dirname'] = dirname
+        input_value['dirname'] = dirname.as_posix()
 
     # define nameroot, nameext
+    # noinspection PyTypeChecker
     nameroot, nameext = os.path.splitext(basename)
     input_value['nameroot'] = nameroot
     input_value['nameext'] = nameext
 
     # define path
-    input_value['path'] = os.path.join(dirname, basename)
+    input_value['path'] = (dirname / basename).as_posix()
 
 
 def complete_directory_input_values(input_key, input_value):
@@ -269,7 +271,7 @@ def complete_directory_input_values(input_key, input_value):
 
     # define path
     dirname = default_inputs_dirname()
-    input_value['path'] = os.path.join(dirname, basename)
+    input_value['path'] = (dirname / basename).as_posix()
 
 
 def extract_batches(red_data):
@@ -285,12 +287,16 @@ def extract_batches(red_data):
     if red_batches:
         batches = []
         for batch in red_batches:
-            new_batch = {'inputs': batch['inputs'],
-                         'outputs': batch.get('outputs', {})}
+            new_batch = {
+                'inputs': batch['inputs'],
+                'outputs': batch.get('outputs', {})
+            }
             batches.append(new_batch)
     else:
-        batch = {'inputs': red_data['inputs'],
-                 'outputs': red_data.get('outputs', {})}
+        batch = {
+            'inputs': red_data['inputs'],
+            'outputs': red_data.get('outputs', {})
+        }
         batches = [batch]
 
     for batch in batches:

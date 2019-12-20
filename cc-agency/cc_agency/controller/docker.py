@@ -570,8 +570,8 @@ class ClientProxy:
             self._log('Failed to load json from restricted red agent:\n{}'.format(err_str))
             return
 
-        container_stdout_path = os.path.join(CONTAINER_OUTPUT_DIR, batch.get(STDOUT_FILE_KEY))
-        container_stderr_path = os.path.join(CONTAINER_OUTPUT_DIR, batch.get(STDERR_FILE_KEY))
+        container_stdout_path = CONTAINER_OUTPUT_DIR.joinpath(batch.get(STDOUT_FILE_KEY))
+        container_stderr_path = CONTAINER_OUTPUT_DIR.joinpath(batch.get(STDERR_FILE_KEY))
 
         def write_stdout_stderr_to_gridfs(include_stdout=True, include_stderr=True):
             """
