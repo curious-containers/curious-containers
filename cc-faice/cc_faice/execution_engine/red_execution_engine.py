@@ -9,6 +9,7 @@ import os
 from typing import List
 from enum import Enum
 from uuid import uuid4
+from pathlib import PurePosixPath, Path
 
 from cc_core.commons.docker_utils import create_batch_archive, retrieve_file_archive, get_first_tarfile_member
 from cc_core.commons.engines import engine_validation
@@ -97,9 +98,9 @@ def run(
             docker_manager.pull(docker_image, auth=registry_auth)
 
         if len(restricted_red_batches) == 1:
-            host_outdir = 'outputs'
+            host_outdir = Path('outputs')
         else:
-            host_outdir = 'outputs_{batch_index}'
+            host_outdir = Path('outputs_{batch_index}')
 
         for batch_index, restricted_red_batch in enumerate(restricted_red_batches):
             container_execution_result = run_restricted_red_batch(
@@ -302,6 +303,7 @@ def run_restricted_red_batch(
     :param docker_image: The docker image url to use. This docker image should be already present on the host machine
     :param host_outdir: The outputs directory of the host. This is mounted as outdir inside the docker container
                         mounted into the docker container, where host_outputs_dir is the host directory.
+    :type host_outdir: Path
     :param output_mode: If output mode == Connectors the restricted_red agent will be started with '--outputs' flag
                         Otherwise this function will retrieve the output files with container.get_archive()
     :param leave_container: If True, the started container will not be stopped after execution.
@@ -361,17 +363,17 @@ def run_restricted_red_batch(
 
     restricted_red_agent_result = agent_execution_result.get_agent_result_dict()
 
-    abs_host_outdir = os.path.abspath(host_outdir.format(batch_index=batch_index))
+    abs_host_outdir = Path(os.path.abspath(str(host_outdir).format(batch_index=batch_index)))  # type: Path
     if restricted_red_agent_result['state'] == 'succeeded':
         state = ExecutionResultType.Succeeded
 
         # handle stdout
         if restricted_red_batch.stdout_specified_by_user():
-            _transfer_file(restricted_red_agent_result['process']['stdout'], container, host_outdir)
+            _transfer_file(restricted_red_agent_result['process']['stdout'], container, abs_host_outdir)
 
         # handle stderr
         if restricted_red_batch.stderr_specified_by_user():
-            _transfer_file(restricted_red_agent_result['process']['stderr'], container, host_outdir)
+            _transfer_file(restricted_red_agent_result['process']['stderr'], container, abs_host_outdir)
 
         # create outputs directory
         if output_mode == OutputMode.Directory:
@@ -408,7 +410,7 @@ def _handle_directory_outputs(host_outdir, outputs, container):
     then stored in the created host_outdir.
 
     :param host_outdir: The absolute path to the output directory of the host.
-    :type host_outdir: str
+    :type host_outdir: Path
     :param outputs: A dictionary mapping output_keys to file information.
     :type outputs: Dict[str, Dict]
     :param container: The container to get the outputs from
@@ -416,6 +418,7 @@ def _handle_directory_outputs(host_outdir, outputs, container):
 
     :raise AgentError: If a file given in outputs could not be retrieved from the container
     """
+    # noinspection PyTypeChecker
     os.makedirs(host_outdir, exist_ok=True)
 
     for output_key, output_file_information in outputs.items():
@@ -434,15 +437,15 @@ def _transfer_file(container_path, container, host_outdir):
 
     :param container_path: The path inside the container where the source file is located. If absolute the absolute path
                            is taken. If relative it is relative to the cc CONTAINER_OUTPUT_DIR.
-    :type container_path: str
+    :type container_path: PurePosixPath
     :param container: The docker container from which to transfer the file
     :type container: Container
     :param host_outdir: The host output directory where to copy the file
-    :type host_outdir: str
+    :type host_outdir: Path
 
     :raise AgentError: If the given container file could not be retrieved
     """
-    abs_container_path = os.path.join(CONTAINER_OUTPUT_DIR, container_path)
+    abs_container_path = CONTAINER_OUTPUT_DIR / container_path
     try:
         with retrieve_file_archive(container, abs_container_path) as file_archive:
             file_archive.extractall(host_outdir)
@@ -458,12 +461,13 @@ def _handle_stdout_stderr_on_failure(host_outdir, restricted_red_batch, containe
     Creates the stdout/stderr file, if the process failed.
 
     :param host_outdir: The absolute path to the output directory of the host.
-    :type host_outdir: str
+    :type host_outdir: Path
     :param restricted_red_batch: The restricted red data containing stdout/stderr information
     :type restricted_red_batch: RestrictedRedBatch
     :param container: The container to get the outputs from
     :type container: Container
     """
+    # noinspection PyTypeChecker
     os.makedirs(host_outdir, exist_ok=True)
 
     stdout_stderr = [
@@ -473,14 +477,14 @@ def _handle_stdout_stderr_on_failure(host_outdir, restricted_red_batch, containe
 
     for out_err, index, default_name in stdout_stderr:
         # define container path (e.g. /cc/outputs/stdout.txt)
-        container_path = os.path.join(CONTAINER_OUTPUT_DIR, restricted_red_batch.data['cli'][out_err])
+        container_path = CONTAINER_OUTPUT_DIR / restricted_red_batch.data['cli'][out_err]
 
         # define host filename (e.g. stdout.txt)
         host_file_name = default_name
         if restricted_red_batch.stdout_stderr_specified_by_user[index]:
             host_file_name = restricted_red_batch.data['cli'][out_err]
 
-        host_file_path = os.path.join(host_outdir, host_file_name)
+        host_file_path = host_outdir / host_file_name
 
         try:
             with retrieve_file_archive(container, container_path) as file_archive:
@@ -518,4 +522,4 @@ def _create_restricted_red_agent_command():
     :return: A list of strings to execute inside the docker container.
     :rtype: List[str]
     """
-    return [PYTHON_INTERPRETER, CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH]
+    return [PYTHON_INTERPRETER, CONTAINER_AGENT_PATH.as_posix(), CONTAINER_RESTRICTED_RED_FILE_PATH.as_posix()]

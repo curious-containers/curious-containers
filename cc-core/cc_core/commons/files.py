@@ -4,6 +4,7 @@ import sys
 import json
 import tarfile
 import textwrap
+from pathlib import PurePosixPath
 
 from ruamel.yaml import YAML, YAMLError
 
@@ -107,7 +108,7 @@ def create_directory_tarinfo(directory_name, owner_name, owner_id=1000):
     The owner of the file directory has read, write, execute privileges for the created directory TarInfo object.
 
     :param directory_name: The name of the directory represented by the created TarInfo
-    :type directory_name: str
+    :type directory_name: PurePosixPath
     :param owner_name: The name of the owner of the directory
     :type owner_name: str
     :param owner_id: The id of the owner of the directory
@@ -115,7 +116,7 @@ def create_directory_tarinfo(directory_name, owner_name, owner_id=1000):
     :return: A TarInfo object representing a directory with the given name
     :rtype: tarfile.TarInfo
     """
-    directory_tarinfo = tarfile.TarInfo(directory_name)
+    directory_tarinfo = tarfile.TarInfo(directory_name.as_posix())
 
     directory_tarinfo.type = tarfile.DIRTYPE
     directory_tarinfo.uid = owner_id

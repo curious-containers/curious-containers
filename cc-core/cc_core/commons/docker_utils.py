@@ -2,6 +2,7 @@ import io
 import json
 import tarfile
 from typing import List
+from pathlib import PurePosixPath, Path
 
 import docker
 from cc_core.commons.gpu_info import GPUDevice, NVIDIA_GPU_VENDOR
@@ -196,12 +197,12 @@ def create_batch_archive(restricted_red_data):
     tar_file = tarfile.open(mode='w', fileobj=data_file)
 
     # add restricted red agent
-    tar_file.add(get_restricted_red_agent_host_path(), arcname=CONTAINER_AGENT_PATH, recursive=False)
+    tar_file.add(get_restricted_red_agent_host_path(), arcname=CONTAINER_AGENT_PATH.as_posix(), recursive=False)
 
     # add restricted red file
     restricted_red_batch_content = json.dumps(restricted_red_data).encode('utf-8')
     # see https://bugs.python.org/issue22208 for more information
-    restricted_red_batch_tarinfo = tarfile.TarInfo(CONTAINER_RESTRICTED_RED_FILE_PATH)
+    restricted_red_batch_tarinfo = tarfile.TarInfo(CONTAINER_RESTRICTED_RED_FILE_PATH.as_posix())
     restricted_red_batch_tarinfo.size = len(restricted_red_batch_content)
     tar_file.addfile(restricted_red_batch_tarinfo, io.BytesIO(restricted_red_batch_content))
 
@@ -225,7 +226,7 @@ def get_restricted_red_agent_host_path():
     Returns the path of the restricted red agent in the host machine.
 
     :return: The path to the restricted red agent
-    :rtype: str
+    :rtype: Path
     """
     import cc_core.agent.restricted_red.__main__ as restricted_red_main
     return restricted_red_main.__file__
@@ -326,7 +327,7 @@ def retrieve_file_archive(container, container_path):
                             interrupted.
     """
     try:
-        bits, _ = container.get_archive(container_path)
+        bits, _ = container.get_archive(container_path.as_posix())
     except (DockerException, ConnectionError) as e:
         raise DockerException(str(e))
 

@@ -570,8 +570,13 @@ class ClientProxy:
             self._log('Failed to load json from restricted red agent:\n{}'.format(err_str))
             return
 
-        container_stdout_path = CONTAINER_OUTPUT_DIR.joinpath(batch.get(STDOUT_FILE_KEY))
-        container_stderr_path = CONTAINER_OUTPUT_DIR.joinpath(batch.get(STDERR_FILE_KEY))
+        container_stdout_path = None
+        if STDOUT_FILE_KEY in batch:
+            container_stdout_path = CONTAINER_OUTPUT_DIR.joinpath(batch.get(STDOUT_FILE_KEY)).as_posix()
+
+        container_stderr_path = None
+        if STDERR_FILE_KEY in batch:
+            container_stderr_path = CONTAINER_OUTPUT_DIR.joinpath(batch.get(STDERR_FILE_KEY)).as_posix()
 
         def write_stdout_stderr_to_gridfs(include_stdout=True, include_stderr=True):
             """
@@ -995,9 +1000,9 @@ class ClientProxy:
 
         command = [
             'python3',
-            CONTAINER_AGENT_PATH,
+            CONTAINER_AGENT_PATH.as_posix(),
             '--outputs',
-            CONTAINER_RESTRICTED_RED_FILE_PATH
+            CONTAINER_RESTRICTED_RED_FILE_PATH.as_posix()
         ]
 
         ram = experiment['container']['settings']['ram']
@@ -1025,7 +1030,7 @@ class ClientProxy:
             available_runtimes=self._runtimes,
             name=batch_id,
             # user='1000:1000',
-            working_dir=CONTAINER_OUTPUT_DIR,
+            working_dir=CONTAINER_OUTPUT_DIR.as_posix(),
             detach=True,
             mem_limit=mem_limit,
             memswap_limit=mem_limit,

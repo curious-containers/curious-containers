@@ -1,8 +1,7 @@
-import io
 import json
 import os
-import tarfile
 from typing import List
+from pathlib import Path, PurePosixPath
 
 import docker
 from docker.errors import DockerException, APIError
@@ -141,7 +140,7 @@ class DockerManager:
         :param ram: The ram limit for this container in megabytes
         :type ram: int
         :param working_directory: The working directory inside the docker container
-        :type working_directory: str
+        :type working_directory: PurePosixPath
         :param gpus: A specification of gpus to enable in this docker container
         :type gpus: List[GPUDevice]
         :param environment: A dictionary containing environment variables, which should be set inside the container
@@ -182,7 +181,7 @@ class DockerManager:
             available_runtimes=self._runtimes,
             name=name,
             # user='1000:1000',
-            working_dir=working_directory,
+            working_dir=working_directory.as_posix(),
             mem_limit=mem_limit,
             memswap_limit=mem_limit,
             environment=environment,
