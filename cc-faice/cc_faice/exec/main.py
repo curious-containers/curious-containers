@@ -1,3 +1,4 @@
+import sys
 from argparse import ArgumentParser
 from pprint import pprint
 
@@ -249,6 +250,11 @@ def run_faice(red_data, preserve_environment, disable_pull, leave_container, ins
         output_mode=faice_output_mode,
         gpu_ids=gpu_ids
     )
+
+    brief_exception_text = result.get('briefExceptionText')
+    if brief_exception_text:
+        print(brief_exception_text, file=sys.stderr)
+
     return result
 
 

@@ -13,7 +13,7 @@ from pathlib import PurePosixPath, Path
 
 from cc_core.commons.docker_utils import create_batch_archive, retrieve_file_archive, get_first_tarfile_member
 from cc_core.commons.engines import engine_validation
-from cc_core.commons.exceptions import print_exception, exception_format, AgentError, JobExecutionError
+from cc_core.commons.exceptions import brief_exception_text, exception_format, AgentError, JobExecutionError
 from cc_core.commons.gpu_info import get_gpu_requirements, match_gpus, InsufficientGPUError
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR, \
     CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH, RestrictedRedBatch
@@ -121,7 +121,7 @@ def run(
             result['containers'].append(container_execution_result.to_dict())
             container_execution_result.raise_for_state()
     except Exception as e:
-        print_exception(e, secret_values)
+        result['briefExceptionText'] = brief_exception_text(e, secret_values)
         result['debugInfo'] = exception_format(secret_values)
         result['state'] = 'failed'
 
