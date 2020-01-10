@@ -60,7 +60,6 @@ def convert_red_to_restricted_red(red_data):
 
     - The restricted red data is always given as list and each list entry represents one batch in the red data.
     - The command is always a list of strings
-    - TODO: process as defined in CWL standard
     - For every input file/input directory additional attributes are defined ('path', 'nameroot', 'nameext')
     - Input references are resolved
 

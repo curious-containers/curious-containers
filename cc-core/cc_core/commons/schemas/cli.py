@@ -19,6 +19,7 @@ cli_schema = {
         'baseCommand': {
             'oneOf': [
                 {'type': 'string'},
+                {'type': 'null'},
                 {
                     'type': 'array',
                     'items': {'type': 'string'}
@@ -85,5 +86,5 @@ cli_schema = {
         'doc': {'type': 'string'}
     },
     'additionalProperties': False,
-    'required': ['cwlVersion', 'class', 'baseCommand', 'inputs', 'outputs']
+    'required': ['cwlVersion', 'class', 'inputs', 'outputs']
 }
