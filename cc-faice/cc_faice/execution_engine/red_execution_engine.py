@@ -359,7 +359,7 @@ def run_restricted_red_batch(
             )
 
     # run restricted red agent
-    agent_execution_result = docker_manager.run_command(container, command, user='1000:1000')
+    agent_execution_result = docker_manager.run_command(container, command)
 
     restricted_red_agent_result = agent_execution_result.get_agent_result_dict()
 

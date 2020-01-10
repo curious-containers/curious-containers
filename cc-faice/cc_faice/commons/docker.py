@@ -180,7 +180,7 @@ class DockerManager:
             gpus=gpu_ids,
             available_runtimes=self._runtimes,
             name=name,
-            user='1000:1000',
+            # user='1000:1000',
             working_dir=working_directory.as_posix(),
             mem_limit=mem_limit,
             memswap_limit=mem_limit,
@@ -210,7 +210,7 @@ class DockerManager:
         container.put_archive('/', archive)
 
     @staticmethod
-    def run_command(container, command, user='1000:1000', work_dir=None):
+    def run_command(container, command, user=None, work_dir=None):
         """
         Runs the given command in the given container and waits for the execution to end.
 
@@ -219,7 +219,7 @@ class DockerManager:
         :type container: Container
         :param command: The command to execute inside the given docker container
         :type command: list[str] or str
-        :param user: The user to execute the command
+        :param user: The user to execute the command. If no user is specified the user specified in the image is used
         :type user: str or int
         :param work_dir: The working directory where to execute the command
         :type work_dir: str
