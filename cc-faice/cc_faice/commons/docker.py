@@ -1,7 +1,7 @@
 import json
 import os
 from typing import List
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 
 import docker
 from docker.errors import DockerException, APIError
@@ -9,7 +9,7 @@ from docker.models.containers import Container
 from docker.types import Ulimit
 from requests.exceptions import ConnectionError
 
-from cc_core.commons.docker_utils import create_container_with_gpus, detect_nvidia_docker_gpus, ContainerFileBitsWrapper
+from cc_core.commons.docker_utils import create_container_with_gpus, detect_nvidia_docker_gpus
 from cc_core.commons.exceptions import AgentError
 from cc_core.commons.gpu_info import set_nvidia_environment_variables, GPUDevice
 
@@ -180,7 +180,7 @@ class DockerManager:
             gpus=gpu_ids,
             available_runtimes=self._runtimes,
             name=name,
-            # user='1000:1000',
+            user='1000:1000',
             working_dir=working_directory.as_posix(),
             mem_limit=mem_limit,
             memswap_limit=mem_limit,

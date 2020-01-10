@@ -1029,7 +1029,7 @@ class ClientProxy:
             command=command,
             available_runtimes=self._runtimes,
             name=batch_id,
-            # user='1000:1000',
+            user='1000:1000',
             working_dir=CONTAINER_OUTPUT_DIR.as_posix(),
             detach=True,
             mem_limit=mem_limit,
