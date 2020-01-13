@@ -464,14 +464,17 @@ class ClientProxy:
         If this client proxy is offline, tries to restart it.
         """
         while True:
-            if self.is_online():
-                self._inspection_event.wait()
-                self._inspection_event.clear()
-                self._inspect_on_error()
-            else:
-                self._inspection_event.wait(timeout=OFFLINE_INSPECTION_INTERVAL)
-                self._inspection_event.clear()
-                self._init_docker_client()  # tries to reinitialize the docker client
+            try:
+                if self.is_online():
+                    self._inspection_event.wait()
+                    self._inspection_event.clear()
+                    self._inspect_on_error()
+                else:
+                    self._inspection_event.wait(timeout=OFFLINE_INSPECTION_INTERVAL)
+                    self._inspection_event.clear()
+                    self._init_docker_client()  # tries to reinitialize the docker client
+            except Exception as e:
+                self._log('Error while inspecting: {}'.format(repr(e)))
 
     def _check_exited_containers(self):
         """
@@ -528,6 +531,8 @@ class ClientProxy:
             except (DockerException, ConnectionError) as e:
                 self._log('Error while checking exited containers:\n{}'.format(repr(e)))
                 self.do_inspect()
+            except Exception as e:
+                self._log('Error while checking exited containers: {}'.format(repr(e)))
 
     def _check_exited_container(self, container, batch):
         """
@@ -565,7 +570,8 @@ class ClientProxy:
             data = json.loads(stdout_logs)
         except json.JSONDecodeError as e:
             err_str = repr(e)
-            debug_info = 'CC-Agent data is not a valid json object: {}\n\nstdout was:\n{}'.format(err_str, stdout_logs)
+            debug_info = 'stdout of agent is not a valid json object: {}\nstdout of agent was:\n{}'\
+                         .format(err_str, stdout_logs)
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
             self._log('Failed to load json from restricted red agent:\n{}'.format(err_str))
             return
@@ -699,8 +705,13 @@ class ClientProxy:
                 self.do_inspect()
                 self._log('TrusteeService unavailable while checking for batches:\n{}'.format(repr(e)))
                 continue
+            except Exception as e:
+                self._log('Error while checking for batches: {}'.format(repr(e)))
 
-            self._prune_docker_images()
+            try:
+                self._prune_docker_images()
+            except Exception as e:
+                self._log('Error while removing old docker images: {}'.format(repr(e)))
 
     def _get_images_with_last_registration_time(self):
         """
