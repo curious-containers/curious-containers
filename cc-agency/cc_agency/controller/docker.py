@@ -592,11 +592,11 @@ class ClientProxy:
 
         container_stdout_path = None
         if STDOUT_FILE_KEY in batch:
-            container_stdout_path = CONTAINER_OUTPUT_DIR.joinpath(batch.get(STDOUT_FILE_KEY)).as_posix()
+            container_stdout_path = CONTAINER_OUTPUT_DIR.joinpath(batch.get(STDOUT_FILE_KEY))
 
         container_stderr_path = None
         if STDERR_FILE_KEY in batch:
-            container_stderr_path = CONTAINER_OUTPUT_DIR.joinpath(batch.get(STDERR_FILE_KEY)).as_posix()
+            container_stderr_path = CONTAINER_OUTPUT_DIR.joinpath(batch.get(STDERR_FILE_KEY))
 
         def write_stdout_stderr_to_gridfs(include_stdout=True, include_stderr=True):
             """
