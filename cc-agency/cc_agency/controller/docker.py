@@ -2,6 +2,7 @@ import io
 import json
 import os
 import sys
+import traceback
 from threading import Thread, Event
 import concurrent.futures
 import time
@@ -295,14 +296,20 @@ class ClientProxy:
         return ram, cpus, runtimes
 
     @staticmethod
-    def _log(message):
+    def _log(message, e=None):
         """
         Logs a message by printing it to make it visible to journalctl.
 
         :param message: The message to print
         :type message: str
+        :param e: The exception to print
+        :type e: Exception
         """
         print(message, file=sys.stderr)
+        if e is not None:
+            tb_list = traceback.extract_tb(e.__traceback__)
+            last = tb_list[len(tb_list)-1]
+            print('In "{}:{}" in {}(): {}'.format(last.filename, last.lineno, last.name, repr(e)), file=sys.stderr)
 
     def _batch_containers(self, status):
         """
@@ -395,7 +402,7 @@ class ClientProxy:
         except (DockerException, ConnectionError) as e:
             return False, str(e)
         except Exception as e:
-            self._log('Failed to inspect docker client for "{}". Error:\n{}'.format(self._node_name, repr(e)))
+            self._log('Failed to inspect docker client for "{}":'.format(self._node_name), e)
             return False, str(e)
 
         return True, info
@@ -436,7 +443,7 @@ class ClientProxy:
                     self._printed_failed_docker_client_init = True
         except (DockerException, ConnectionError) as e:
             if not self._printed_failed_docker_client_init:
-                self._log('Failed to init docker client "{}" with exception:\n{}'.format(self._node_name, repr(e)))
+                self._log('Failed to init docker client "{}" with exception:'.format(self._node_name), e)
                 self._printed_failed_docker_client_init = True
         return init_succeeded
 
@@ -458,7 +465,7 @@ class ClientProxy:
         except DockerException:
             pass  # If this fails, no gpus are assumed
         except ConnectionError as e:
-            self._log('GPU Detection failed.\n{}'.format(repr(e)))
+            self._log('GPU Detection failed:', e)
             self.do_inspect()
 
     def _inspection_loop(self):
@@ -481,7 +488,7 @@ class ClientProxy:
                     self._inspection_event.clear()
                     self._init_docker_client()  # tries to reinitialize the docker client
             except Exception as e:
-                self._log('Error while inspecting: {}'.format(repr(e)))
+                self._log('Error while inspecting:', e)
 
     def _check_exited_containers(self):
         """
@@ -536,10 +543,10 @@ class ClientProxy:
                 if resources_freed:
                     self._scheduling_event.set()
             except (DockerException, ConnectionError) as e:
-                self._log('Error while checking exited containers:\n{}'.format(repr(e)))
+                self._log('Error while checking exited containers:', e)
                 self.do_inspect()
             except Exception as e:
-                self._log('Error while checking exited containers: {}'.format(repr(e)))
+                self._log('Error while checking exited containers:', e)
 
     def _check_exited_container(self, container, batch):
         """
@@ -567,7 +574,7 @@ class ClientProxy:
             docker_stats = container.stats(stream=False)
         except Exception as e:
             err_str = repr(e)
-            self._log('Failed to get container logs:\n{}'.format(err_str))
+            self._log('Failed to get container logs:', e)
             debug_info = 'Could not get logs or stats of container: {}'.format(err_str)
             batch_failure(self._mongo, batch_id, debug_info, None, batch['state'])
             return
@@ -580,7 +587,7 @@ class ClientProxy:
             debug_info = 'stdout of agent is not a valid json object: {}\nstdout of agent was:\n{}'\
                          .format(err_str, stdout_logs)
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
-            self._log('Failed to load json from restricted red agent:\n{}'.format(err_str))
+            self._log('Failed to load json from restricted red agent:', e)
             return
 
         container_stdout_path = None
@@ -630,7 +637,7 @@ class ClientProxy:
             err_str = repr(e)
             debug_info = 'CC-Agent data sent by callback does not comply with jsonschema: {}'.format(err_str)
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
-            self._log('Failed to validate restricted_red agent output:\n{}'.format(err_str))
+            self._log('Failed to validate restricted_red agent output:', e)
             return
 
         if data['state'] == 'failed':
@@ -710,15 +717,15 @@ class ClientProxy:
                 self._check_for_batches()
             except TrusteeServiceError as e:
                 self.do_inspect()
-                self._log('TrusteeService unavailable while checking for batches:\n{}'.format(repr(e)))
+                self._log('TrusteeService unavailable while checking for batches:', e)
                 continue
             except Exception as e:
-                self._log('Error while checking for batches: {}'.format(repr(e)))
+                self._log('Error while checking for batches:', e)
 
             try:
                 self._prune_docker_images()
             except Exception as e:
-                self._log('Error while removing old docker images: {}'.format(repr(e)))
+                self._log('Error while removing old docker images:', e)
 
     def _get_images_with_last_registration_time(self):
         """
@@ -742,7 +749,7 @@ class ClientProxy:
                 continue
             except ConnectionError as e:
                 self.do_inspect()
-                self._log('Failed to get image "{}" with registration time:\n{}'.format(image_url, repr(e)))
+                self._log('Failed to get image "{}" with registration time:'.format(image_url), e)
                 continue
 
             latest_experiment = self._mongo.db.experiments.find_one(
@@ -784,7 +791,7 @@ class ClientProxy:
                     continue  # if image is used by other images
                 except ConnectionError as e:
                     self.do_inspect()
-                    self._log('Failed to remove image:\n{}'.format(repr(e)))
+                    self._log('Failed to remove image:', e)
                     break
                 print('removed image {}'.format(image_to_str(image)))
 
@@ -937,7 +944,7 @@ class ClientProxy:
         try:
             self._run_batch_container(batch, experiment)
         except Exception as e:
-            self._log('Error while running batch container: {}'.format(repr(e)))
+            self._log('Error while running batch container:', e)
             batch_id = str(batch['_id'])
             self._run_batch_container_failure(batch_id, str(e), batch['state'])
 
@@ -1153,7 +1160,7 @@ class ClientProxy:
         try:
             batch_failure(self._mongo, batch_id, debug_info, None, current_state)
         except Exception as e:
-            self._log('Error while handling batch failure: {}'.format(repr(e)))
+            self._log('Error while handling batch failure:', e)
 
     def _pull_image_failure(self, debug_info, batch_id, current_state):
         batch_failure(self._mongo, batch_id, debug_info, None, current_state)
