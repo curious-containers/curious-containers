@@ -387,7 +387,7 @@ class ClientProxy:
                 inspection_image,
                 command,
                 user='1000:1000',
-                auto_remove=True,
+                remove=True,
                 environment=self._environment,
                 network=self._network
             )
@@ -431,10 +431,12 @@ class ClientProxy:
                     init_succeeded = True
                     self._printed_failed_docker_client_init = False
             else:
-                self._log('Failed to init docker client for "{}".\n{}'.format(self._node_name, state))
+                if not self._printed_failed_docker_client_init:
+                    self._log('Failed to init docker client for "{}":\n{}'.format(self._node_name, state))
+                    self._printed_failed_docker_client_init = True
         except (DockerException, ConnectionError) as e:
             if not self._printed_failed_docker_client_init:
-                self._log('Failed to init docker client:\n{}'.format(repr(e)))
+                self._log('Failed to init docker client "{}" with exception:\n{}'.format(self._node_name, repr(e)))
                 self._printed_failed_docker_client_init = True
         return init_succeeded
 
