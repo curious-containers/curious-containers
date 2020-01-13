@@ -245,7 +245,7 @@ def complete_file_input_values(input_key, input_value):
 
     # define nameroot, nameext
     # noinspection PyTypeChecker
-    nameroot, nameext = os.path.splitext(basename)
+    nameroot, nameext = os.path.splitext(basename.as_posix())
     input_value['nameroot'] = nameroot
     input_value['nameext'] = nameext
 
