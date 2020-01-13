@@ -252,7 +252,7 @@ class ClientProxy:
         self._online.set()  # start _check_batch_containers and _check_exited_containers
 
     def _set_offline(self, debug_info):
-        print('Node offline:', self._node_name)
+        self._log('Node offline: '.format(self._node_name))
 
         self._online.clear()
 
@@ -393,6 +393,9 @@ class ClientProxy:
             )
             info = self._info()
         except (DockerException, ConnectionError) as e:
+            return False, str(e)
+        except Exception as e:
+            self._log('Failed to inspect docker client for "{}". Error:\n{}'.format(self._node_name, repr(e)))
             return False, str(e)
 
         return True, info
