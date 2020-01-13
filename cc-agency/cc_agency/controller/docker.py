@@ -2,7 +2,6 @@ import io
 import json
 import os
 import sys
-import traceback
 from threading import Thread, Event
 import concurrent.futures
 import time
@@ -11,6 +10,7 @@ from typing import List, Tuple, Dict
 from tarfile import StreamError
 
 import docker
+from cc_core.commons.exceptions import log_format_exception
 from docker.errors import DockerException, APIError
 from docker.models.containers import Container
 from docker.models.images import Image
@@ -85,7 +85,7 @@ def _pull_image(docker_client, image_url, auth, depending_batches):
     try:
         docker_client.images.pull(image_url, auth_config=auth)
     except Exception as e:
-        debug_info = str(e).split('\n')
+        debug_info = log_format_exception(e).split('\n')
         return ImagePullResult(image_url, auth, False, debug_info, depending_batches)
 
     return ImagePullResult(image_url, auth, True, None, depending_batches)
@@ -307,9 +307,7 @@ class ClientProxy:
         """
         print(message, file=sys.stderr)
         if e is not None:
-            tb_list = traceback.extract_tb(e.__traceback__)
-            last = tb_list[len(tb_list)-1]
-            print('In "{}:{}" in {}(): {}'.format(last.filename, last.lineno, last.name, repr(e)), file=sys.stderr)
+            print(log_format_exception(e), file=sys.stderr)
 
     def _batch_containers(self, status):
         """
@@ -337,7 +335,8 @@ class ClientProxy:
             containers = self._client.containers.list(all=True, limit=-1, filters=filters)  # type: List[Container]
         except (ConnectionError, ReadTimeout) as e:
             raise DockerException(
-                'Could not list current containers. Failed with the following message:\n{}'.format(str(e))
+                'Could not list current containers. Failed with the following message:\n{}'
+                .format(log_format_exception(e))
             )
 
         for c in containers:
@@ -400,10 +399,10 @@ class ClientProxy:
             )
             info = self._info()
         except (DockerException, ConnectionError) as e:
-            return False, str(e)
+            return False, log_format_exception(e)
         except Exception as e:
             self._log('Failed to inspect docker client for "{}":'.format(self._node_name), e)
-            return False, str(e)
+            return False, log_format_exception(e)
 
         return True, info
 
@@ -573,9 +572,8 @@ class ClientProxy:
 
             docker_stats = container.stats(stream=False)
         except Exception as e:
-            err_str = repr(e)
             self._log('Failed to get container logs:', e)
-            debug_info = 'Could not get logs or stats of container: {}'.format(err_str)
+            debug_info = 'Could not get logs or stats of container: {}'.format(log_format_exception(e))
             batch_failure(self._mongo, batch_id, debug_info, None, batch['state'])
             return
 
@@ -583,9 +581,8 @@ class ClientProxy:
         try:
             data = json.loads(stdout_logs)
         except json.JSONDecodeError as e:
-            err_str = repr(e)
             debug_info = 'stdout of agent is not a valid json object: {}\nstdout of agent was:\n{}'\
-                         .format(err_str, stdout_logs)
+                         .format(log_format_exception(e), stdout_logs)
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
             self._log('Failed to load json from restricted red agent:', e)
             return
@@ -614,7 +611,7 @@ class ClientProxy:
                 except (DockerException, ValueError, StreamError) as ex:
                     errors.append(
                         'Failed to create stdout for batch {}. Failed with the following message:\n{}'
-                        .format(batch_id, str(ex))
+                        .format(batch_id, log_format_exception(ex))
                     )
 
             if include_stderr and container_stderr_path is not None:
@@ -625,7 +622,7 @@ class ClientProxy:
                 except (DockerException, ValueError, StreamError) as ex:
                     errors.append(
                         'Failed to create stderr for batch {}. Failed with the following message:\n{}'
-                        .format(batch_id, str(ex))
+                        .format(batch_id, log_format_exception(ex))
                     )
 
             return errors
@@ -634,8 +631,8 @@ class ClientProxy:
             jsonschema.validate(data, agent_result_schema)
         except jsonschema.ValidationError as e:
             write_stdout_stderr_to_gridfs()
-            err_str = repr(e)
-            debug_info = 'CC-Agent data sent by callback does not comply with jsonschema: {}'.format(err_str)
+            debug_info = 'CC-Agent data sent by callback does not comply with jsonschema:\n{}'\
+                         .format(log_format_exception(e))
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
             self._log('Failed to validate restricted_red agent output:', e)
             return
@@ -946,7 +943,7 @@ class ClientProxy:
         except Exception as e:
             self._log('Error while running batch container:', e)
             batch_id = str(batch['_id'])
-            self._run_batch_container_failure(batch_id, str(e), batch['state'])
+            self._run_batch_container_failure(batch_id, log_format_exception(e), batch['state'])
 
     def _run_batch_container(self, batch, experiment):
         """

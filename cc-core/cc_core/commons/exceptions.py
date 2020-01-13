@@ -1,6 +1,7 @@
 import sys
 
 import re
+import traceback
 from traceback import format_exc
 
 
@@ -22,6 +23,12 @@ def exception_format(secret_values=None):
     exc_text = format_exc()
     exc_text = _hide_secret_values(exc_text, secret_values)
     return [_lstrip_quarter(l.replace('"', '').replace("'", '').rstrip()) for l in exc_text.split('\n') if l]
+
+
+def log_format_exception(e):
+    tb_list = traceback.extract_tb(e.__traceback__)
+    last = tb_list[len(tb_list) - 1]
+    return 'In "{}:{}" in {}():\n[{}]: {}'.format(last.filename, last.lineno, last.name, type(e).__name__, str(e))
 
 
 def brief_exception_text(exception, secret_values=None):
