@@ -387,7 +387,7 @@ class ClientProxy:
                 inspection_image,
                 command,
                 user='1000:1000',
-                remove=True,
+                auto_remove=True,
                 environment=self._environment,
                 network=self._network
             )
