@@ -1,10 +1,12 @@
 import io
 import json
+import stat
 import tarfile
 from typing import List
 from pathlib import PurePosixPath, Path
 
 import docker
+from cc_core.commons.exceptions import AgentError
 from cc_core.commons.gpu_info import GPUDevice, NVIDIA_GPU_VENDOR
 from docker.errors import DockerException
 from requests.exceptions import ConnectionError
@@ -13,12 +15,12 @@ from docker.models.containers import Container, _create_container_args
 from docker.models.images import Image
 
 from cc_core.commons.engines import NVIDIA_DOCKER_RUNTIME
-from cc_core.commons.files import create_directory_tarinfo
 from cc_core.commons.red_to_restricted_red import CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH,\
     CONTAINER_OUTPUT_DIR, CONTAINER_INPUT_DIR
 
 GPU_CAPABILITIES = [['gpu'], ['nvidia'], ['compute'], ['compat32'], ['graphics'], ['utility'], ['video'], ['display']]
 GPU_QUERY_IMAGE = 'nvidia/cuda:8.0-runtime'
+DIRECTORY_PERMISSIONS = stat.S_IROTH | stat.S_IWOTH | stat.S_IXOTH
 
 
 def create_container_with_gpus(client, image, command, available_runtimes, gpus=None, environment=None, **kwargs):
@@ -170,6 +172,23 @@ def _get_nvidia_visible_devices_from_gpus(gpus):
     raise TypeError('gpus should be the string "all" an int or a list, but found "{}"'.format(gpus))
 
 
+def set_permissions_and_owner(tarinfo, permissions, uid=0, username='root'):
+    """
+    Sets the given permissions and owner for the given tarinfo.
+
+    :param tarinfo: The tarinfo to set information for
+    :type tarinfo: tarfile.Tarinfo
+    :param permissions: The permission bits to set for the given tarinfo
+    :param uid: The user id to set for the given tarinfo
+    :param username: The owner of the given tarinfo
+    """
+    tarinfo.uid = uid
+    tarinfo.gid = uid
+    tarinfo.uname = username
+    tarinfo.gname = username
+    tarinfo.mode = permissions
+
+
 def create_batch_archive(restricted_red_data):
     """
     Creates a tar archive that can be put into a cc_core container to execute the restricted red agent.
@@ -179,14 +198,19 @@ def create_batch_archive(restricted_red_data):
     The restricted red file is filled with the given restricted red data.
     The outputs-directory is an empty directory, with name 'outputs'
     The inputs-directory is an empty directory, with name 'inputs'
-    The tar archive and the restricted red file are always in memory and never stored on the local filesystem.
+    The tar archive and the restricted red file are always in memory and never stored on the host filesystem.
+
+    All files and directories are owned by root.
+    The restricted red agent has read and execution permissions for others.
+    The restricted red file has read permissions set for others.
+    The directories outputs and inputs have read, write and execute permissions set for others.
 
     The resulting archive is:
     /cc
-    |--/restricted_red_agent.py
-    |--/restricted_red_file.json
-    |--/outputs/
-    |--/inputs/
+    |-- /restricted_red_agent.py
+    |-- /restricted_red_file.json
+    |-- /outputs/
+    |-- /inputs/
 
     :param restricted_red_data: The data to put into the restricted red file of the returned archive
     :type restricted_red_data: dict
@@ -197,21 +221,29 @@ def create_batch_archive(restricted_red_data):
     tar_file = tarfile.open(mode='w', fileobj=data_file)
 
     # add restricted red agent
-    tar_file.add(get_restricted_red_agent_host_path(), arcname=CONTAINER_AGENT_PATH.as_posix(), recursive=False)
+    # noinspection PyTypeChecker
+    with open(get_restricted_red_agent_host_path(), 'rb') as agent_file:
+        agent_tarinfo = tar_file.gettarinfo(
+            get_restricted_red_agent_host_path(),
+            arcname=CONTAINER_AGENT_PATH.as_posix()
+        )
+        set_permissions_and_owner(agent_tarinfo, stat.S_IROTH | stat.S_IXOTH)
+        tar_file.addfile(agent_tarinfo, agent_file)
 
     # add restricted red file
     restricted_red_batch_content = json.dumps(restricted_red_data).encode('utf-8')
     # see https://bugs.python.org/issue22208 for more information
     restricted_red_batch_tarinfo = tarfile.TarInfo(CONTAINER_RESTRICTED_RED_FILE_PATH.as_posix())
     restricted_red_batch_tarinfo.size = len(restricted_red_batch_content)
+    set_permissions_and_owner(restricted_red_batch_tarinfo, stat.S_IROTH)
     tar_file.addfile(restricted_red_batch_tarinfo, io.BytesIO(restricted_red_batch_content))
 
     # add outputs directory
-    output_directory_tarinfo = create_directory_tarinfo(CONTAINER_OUTPUT_DIR, owner_name='cc')
+    output_directory_tarinfo = create_directory_tarinfo(CONTAINER_OUTPUT_DIR, permissions=DIRECTORY_PERMISSIONS)
     tar_file.addfile(output_directory_tarinfo)
 
     # add inputs_directory
-    input_directory_tarinfo = create_directory_tarinfo(CONTAINER_INPUT_DIR, owner_name='cc')
+    input_directory_tarinfo = create_directory_tarinfo(CONTAINER_INPUT_DIR, permissions=DIRECTORY_PERMISSIONS)
     tar_file.addfile(input_directory_tarinfo)
 
     # close file
@@ -219,6 +251,26 @@ def create_batch_archive(restricted_red_data):
     data_file.seek(0)
 
     return data_file
+
+
+def create_directory_tarinfo(directory_name, permissions, owner_id=0, owner_name='root'):
+    """
+    Creates a tarfile.TarInfo object, that represents a directory with the given directory name.
+
+    :param directory_name: The name of the directory represented by the created TarInfo
+    :type directory_name: PurePosixPath
+    :param permissions: The permission bits for the directory
+    :param owner_id: The id of the owner of the directory
+    :type owner_id: int
+    :param owner_name: The name of the owner of the directory
+    :type owner_name: str
+    :return: A TarInfo object representing a directory with the given name
+    :rtype: tarfile.TarInfo
+    """
+    directory_tarinfo = tarfile.TarInfo(directory_name.as_posix())
+    directory_tarinfo.type = tarfile.DIRTYPE
+    set_permissions_and_owner(directory_tarinfo, permissions, owner_id, owner_name)
+    return directory_tarinfo
 
 
 def get_restricted_red_agent_host_path():
@@ -229,7 +281,7 @@ def get_restricted_red_agent_host_path():
     :rtype: Path
     """
     import cc_core.agent.restricted_red.__main__ as restricted_red_main
-    return restricted_red_main.__file__
+    return Path(restricted_red_main.__file__)
 
 
 def image_to_str(image):
@@ -323,13 +375,13 @@ def retrieve_file_archive(container, container_path):
     :return: A TarFile object with the only member being the specified file
     :rtype: tarfile.TarFile
 
-    :raise DockerException: If the container path does not exists or if the connection to the docker container is
-                            interrupted.
+    :raise AgentError: If the container path does not exists or if the connection to the docker container is
+                       interrupted.
     """
     try:
         bits, _ = container.get_archive(container_path.as_posix())
     except (DockerException, ConnectionError) as e:
-        raise DockerException(str(e))
+        raise AgentError(str(e))
 
     return tarfile.open(fileobj=ContainerFileBitsWrapper(bits), mode='r|*')
 

@@ -118,7 +118,9 @@ def run(
             )
 
             # handle execution result
+            # noinspection PyTypeChecker
             result['containers'].append(container_execution_result.to_dict())
+            result['furtherErrors'] = container_execution_result.get_further_errors()
             container_execution_result.raise_for_state()
     except Exception as e:
         result['briefExceptionText'] = brief_exception_text(e, secret_values)
@@ -233,8 +235,50 @@ class ExecutionResultType(Enum):
         return self.name.lower()
 
 
+class FurtherExecutionErrors:
+    def __init__(self, retrieve_stdout=None, retrieve_stderr=None):
+        """
+        Describes further errors, which can occur during the execution process.
+
+        :param retrieve_stdout: A string describing the error, that occurred, while trying to retrieve the stdout file
+               from the docker container
+        :type retrieve_stdout: str
+        :param retrieve_stderr: A string describing the error, that occurred, while trying to retrieve the stderr file
+               from the docker container
+        :type retrieve_stderr: str
+        """
+        self.retrieve_stdout = retrieve_stdout
+        self.retrieve_stderr = retrieve_stderr
+
+    def as_list(self):
+        """
+        Formats this object as list of strings.
+
+        :return: A list of strings
+        """
+        result = []
+
+        if self.retrieve_stdout:
+            result.append('Error during fetching stdout:')
+            result.append(self.retrieve_stdout)
+        if self.retrieve_stderr:
+            result.append('Error during fetching stderr:')
+            result.append(self.retrieve_stderr)
+
+        return result
+
+
 class ContainerExecutionResult:
-    def __init__(self, state, command, container_name, agent_execution_result, agent_std_err, container_stats):
+    def __init__(
+            self,
+            state,
+            command,
+            container_name,
+            agent_execution_result,
+            agent_std_err,
+            container_stats,
+            further_execution_errors
+    ):
         """
         Creates a new Container Execution Result.
 
@@ -244,6 +288,8 @@ class ContainerExecutionResult:
         :param agent_execution_result: The parsed json output of the restricted_red agent
         :param agent_std_err: The std err as list of string of the restricted_red agent
         :param container_stats: The stats of the executed container, given as dictionary
+        :param further_execution_errors: An object describing further errors during the execution process
+        :type further_execution_errors: FurtherExecutionErrors
         """
         self.state = state
         self.command = command
@@ -251,6 +297,7 @@ class ContainerExecutionResult:
         self.agent_execution_result = agent_execution_result
         self.agent_std_err = agent_std_err
         self.container_stats = container_stats
+        self.further_execution_errors = further_execution_errors
 
     def successful(self):
         return self.state == ExecutionResultType.Succeeded
@@ -278,6 +325,12 @@ class ContainerExecutionResult:
         """
         if not self.successful():
             raise AgentError(self.agent_std_err)
+
+    def get_further_errors(self):
+        """
+        :returns: the contained errors as list of strings
+        """
+        return self.further_execution_errors.as_list()
 
 
 def run_restricted_red_batch(
@@ -361,6 +414,8 @@ def run_restricted_red_batch(
     # run restricted red agent
     agent_execution_result = docker_manager.run_command(container, command)
 
+    further_errors = FurtherExecutionErrors()
+
     restricted_red_agent_result = agent_execution_result.get_agent_result_dict()
 
     abs_host_outdir = Path(os.path.abspath(str(host_outdir).format(batch_index=batch_index)))  # type: Path
@@ -387,7 +442,14 @@ def run_restricted_red_batch(
 
         # only create stdout/stderr, if user process was executed
         if restricted_red_agent_result['process']['executed']:
-            _handle_stdout_stderr_on_failure(abs_host_outdir, restricted_red_batch, container)
+            errors_handling_stdout_stderr = _handle_stdout_stderr_on_failure(
+                abs_host_outdir,
+                restricted_red_batch,
+                container
+            )
+            if errors_handling_stdout_stderr:
+                further_errors.retrieve_stdout = errors_handling_stdout_stderr.get('stdout')
+                further_errors.retrieve_stderr = errors_handling_stdout_stderr.get('stderr')
 
     container.stop()
 
@@ -400,7 +462,8 @@ def run_restricted_red_batch(
         container_name,
         restricted_red_agent_result,
         agent_execution_result.get_stderr(),
-        agent_execution_result.get_stats()
+        agent_execution_result.get_stats(),
+        further_errors
     )
 
 
@@ -466,6 +529,11 @@ def _handle_stdout_stderr_on_failure(host_outdir, restricted_red_batch, containe
     :type restricted_red_batch: RestrictedRedBatch
     :param container: The container to get the outputs from
     :type container: Container
+
+    :returns: A dictionary mapping the strings 'stdout' / 'stderr' to a string describing the error that occurred,
+              while trying to fetch stdout/stderr from the docker container. This dictionary is empty, if no errors
+              occurred.
+    :rtype: dict[str, str]
     """
     # noinspection PyTypeChecker
     os.makedirs(host_outdir, exist_ok=True)
@@ -474,6 +542,8 @@ def _handle_stdout_stderr_on_failure(host_outdir, restricted_red_batch, containe
         ('stdout', 0, DEFAULT_STDOUT_HOST_FILE),
         ('stderr', 1, DEFAULT_STDERR_HOST_FILE)
     ]
+
+    errors = {}
 
     for out_err, index, default_name in stdout_stderr:
         # define container path (e.g. /cc/outputs/stdout.txt)
@@ -495,10 +565,10 @@ def _handle_stdout_stderr_on_failure(host_outdir, restricted_red_batch, containe
                             target_file.write(line)
 
         except AgentError as e:
-            raise AgentError(
-                'Could not retrieve "{}" with path "{}" from docker container. Failed with the following message:\n{}'
-                .format(out_err, container_path, str(e))
-            )
+            errors[out_err] = 'Could not retrieve "{}" with path "{}" from docker container. ' \
+                              'Failed with the following message:\n{}'.format(out_err, container_path, str(e))
+
+    return errors or None
 
 
 def define_is_mounting(restricted_red_batch, insecure):
