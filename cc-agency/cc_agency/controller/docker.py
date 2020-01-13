@@ -252,7 +252,7 @@ class ClientProxy:
         self._online.set()  # start _check_batch_containers and _check_exited_containers
 
     def _set_offline(self, debug_info):
-        self._log('Node offline: '.format(self._node_name))
+        self._log('Node offline: {}'.format(self._node_name))
 
         self._online.clear()
 
@@ -430,6 +430,8 @@ class ClientProxy:
                     self._set_online(ram, cpus)
                     init_succeeded = True
                     self._printed_failed_docker_client_init = False
+            else:
+                self._log('Failed to init docker client for "{}".\n{}'.format(self._node_name, state))
         except (DockerException, ConnectionError) as e:
             if not self._printed_failed_docker_client_init:
                 self._log('Failed to init docker client:\n{}'.format(repr(e)))
