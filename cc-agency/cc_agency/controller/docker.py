@@ -930,6 +930,7 @@ class ClientProxy:
         try:
             self._run_batch_container(batch, experiment)
         except Exception as e:
+            self._log('Error while running batch container: {}'.format(repr(e)))
             batch_id = str(batch['_id'])
             self._run_batch_container_failure(batch_id, str(e), batch['state'])
 
@@ -1142,7 +1143,10 @@ class ClientProxy:
         return create_batch_archive(restricted_red_data)
 
     def _run_batch_container_failure(self, batch_id, debug_info, current_state):
-        batch_failure(self._mongo, batch_id, debug_info, None, current_state)
+        try:
+            batch_failure(self._mongo, batch_id, debug_info, None, current_state)
+        except Exception as e:
+            self._log('Error while handling batch failure: {}'.format(repr(e)))
 
     def _pull_image_failure(self, debug_info, batch_id, current_state):
         batch_failure(self._mongo, batch_id, debug_info, None, current_state)
