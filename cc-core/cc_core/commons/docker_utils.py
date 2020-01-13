@@ -221,13 +221,12 @@ def create_batch_archive(restricted_red_data):
     tar_file = tarfile.open(mode='w', fileobj=data_file)
 
     # add restricted red agent
-    # noinspection PyTypeChecker
-    with open(get_restricted_red_agent_host_path(), 'rb') as agent_file:
-        agent_tarinfo = tar_file.gettarinfo(
-            get_restricted_red_agent_host_path(),
-            arcname=CONTAINER_AGENT_PATH.as_posix()
-        )
-        set_permissions_and_owner(agent_tarinfo, stat.S_IROTH | stat.S_IXOTH)
+    agent_tarinfo = tar_file.gettarinfo(
+        str(get_restricted_red_agent_host_path()),
+        arcname=CONTAINER_AGENT_PATH.as_posix()
+    )
+    set_permissions_and_owner(agent_tarinfo, stat.S_IROTH | stat.S_IXOTH)
+    with get_restricted_red_agent_host_path().open('rb') as agent_file:
         tar_file.addfile(agent_tarinfo, agent_file)
 
     # add restricted red file
