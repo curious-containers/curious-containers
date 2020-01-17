@@ -22,13 +22,35 @@ def _lstrip_quarter(s):
 def exception_format(secret_values=None):
     exc_text = format_exc()
     exc_text = _hide_secret_values(exc_text, secret_values)
-    return [_lstrip_quarter(l.replace('"', '').replace("'", '').rstrip()) for l in exc_text.split('\n') if l]
+    return [_lstrip_quarter(elem.replace('"', '').replace("'", '').rstrip()) for elem in exc_text.split('\n') if elem]
 
 
 def log_format_exception(e):
+    """
+    Returns a formatted string describing the given error for logging purposes.
+
+    :param e: The exception to format
+    :return: A string containing a stacktrace and brief exception text
+    :rtype: str
+    """
     tb_list = traceback.extract_tb(e.__traceback__)
-    last = tb_list[len(tb_list) - 1]
-    return 'In "{}:{}" in {}():\n[{}]: {}'.format(last.filename, last.lineno, last.name, type(e).__name__, str(e))
+
+    max_filename_len = 0
+    for i in tb_list:
+        v = len(i.filename) + len(str(i.lineno))
+        if max_filename_len < v:
+            max_filename_len = v
+
+    text_l = []
+
+    for tb in tb_list:
+        text_l.append(('In {:' + str(max_filename_len+2) + '} in {}()').format(
+            '{}:{}'.format(tb.filename, tb.lineno),
+            tb.name
+        ))
+
+    text_l.append(brief_exception_text(e))
+    return '\n'.join(text_l)
 
 
 def brief_exception_text(exception, secret_values=None):
