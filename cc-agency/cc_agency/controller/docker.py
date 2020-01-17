@@ -332,7 +332,12 @@ class ClientProxy:
             filters = None
 
         try:
-            containers = self._client.containers.list(all=True, limit=-1, filters=filters)  # type: List[Container]
+            containers = self._client.containers.list(
+                all=True,
+                limit=-1,
+                filters=filters,
+                ignore_removed=True  # to ignore failures due to parallel removed containers
+            )  # type: List[Container]
         except (ConnectionError, ReadTimeout) as e:
             raise DockerException(
                 'Could not list current containers. Failed with the following message:\n{}'
