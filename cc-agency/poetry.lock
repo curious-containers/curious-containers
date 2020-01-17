@@ -18,7 +18,7 @@ description = "CC-Core is part of the Curious Containers project. It contains sh
 name = "cc-core"
 optional = false
 python-versions = ">=3.5,<4.0"
-version = "8.1.1"
+version = "8.1.2"
 
 [package.dependencies]
 docker = ">=4.0,<5.0"
@@ -395,8 +395,8 @@ attrs = [
     {file = "attrs-19.3.0.tar.gz", hash = "sha256:f7b7ce16570fe9965acd6d30101a28f62fb4a7f9e926b3bbc9b61f8b04247e72"},
 ]
 cc-core = [
-    {file = "cc-core-8.1.1.tar.gz", hash = "sha256:2a2566f415bd8418776fce36e1d6cfb8ca97ed7d8f0a00bf20d14c478e12dc55"},
-    {file = "cc_core-8.1.1-py3-none-any.whl", hash = "sha256:845929e2d07637a8ca773eb4321208b930e7f277041bfa85eb5fe75cd3af5b2a"},
+    {file = "cc-core-8.1.2.tar.gz", hash = "sha256:4a16ce178c4a657b6919bac27e678c333778e57fd4e96a8fd2cf6b06b47e34aa"},
+    {file = "cc_core-8.1.2-py3-none-any.whl", hash = "sha256:e43b3e665ea3f3b3c6936bebb946a2fddf7f02d3feca8fc3ac15aa7edd2a7e58"},
 ]
 certifi = [
     {file = "certifi-2019.11.28-py2.py3-none-any.whl", hash = "sha256:017c25db2a153ce562900032d5bc68e9f191e44e9a0f762f373977de9df1fbb3"},
