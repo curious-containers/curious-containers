@@ -324,13 +324,13 @@ def detect_nvidia_docker_gpus(client, runtimes):
         '--format=csv,noheader,nounits'
     ]
 
+    container = None
     try:
         container = create_container_with_gpus(
             client,
             GPU_QUERY_IMAGE,
             command=command,
             available_runtimes=runtimes,
-            remove=True,
             gpus='all'
         )  # type: Container
         container.start()
@@ -338,6 +338,13 @@ def detect_nvidia_docker_gpus(client, runtimes):
         stdout = container.logs(stdout=True, stderr=False, stream=False)
         container.remove()
     except DockerException as e:
+        # noinspection PyBroadException
+        try:
+            if container is not None:
+                container.remove()
+        except Exception:
+            # we try to remove the container, but if it doesnt work we are fine
+            pass
         raise DockerException(
             'Could not query gpus. Make sure the nvidia-runtime or nvidia-container-toolkit is configured on '
             'the docker host. Container failed with following message:\n{}'.format(str(e))
