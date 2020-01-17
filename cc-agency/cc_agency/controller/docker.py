@@ -207,7 +207,9 @@ class ClientProxy:
         self._check_for_batches_event = Event()  # type: Event
         self._check_exited_containers_event = Event()  # type: Event
 
-        if not self._init_docker_client():
+        if self._init_docker_client():
+            self._remove_old_containers()
+        else:
             self.do_inspect()
             self._set_offline(format_exc())
 
@@ -218,6 +220,24 @@ class ClientProxy:
         # initialize Executor Pools
         self._pull_executor = concurrent.futures.ThreadPoolExecutor(max_workers=ClientProxy.NUM_WORKERS)
         self._run_executor = concurrent.futures.ThreadPoolExecutor(max_workers=ClientProxy.NUM_WORKERS)
+
+    def _remove_old_containers(self):
+        """
+        Only execute this function at the start.
+        This function removes all batch containers in state created.
+        """
+        try:
+            for batch_id, container in self._batch_containers('created').items():
+                container.stop()
+                container.remove()
+
+                self._run_batch_container_failure(
+                    batch_id,
+                    'agency was restarted during processing of this batch and the batch could not be started correctly.',
+                    'created'
+                )
+        except Exception as e:
+            self._log('Error while removing old containers', e)
 
     def get_gpus(self):
         return self._gpus
@@ -1165,7 +1185,7 @@ class ClientProxy:
             self._log('Error while handling batch failure:', e)
 
     def _pull_image_failure(self, debug_info, batch_id, current_state):
-        batch_failure(self._mongo, batch_id, debug_info, None, current_state)
+        self._run_batch_container_failure(batch_id, debug_info, current_state)
 
     def _has_nvidia_gpus(self):
         """

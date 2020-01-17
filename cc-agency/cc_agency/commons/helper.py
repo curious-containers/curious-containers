@@ -213,6 +213,9 @@ def batch_failure(
         {'attempts': 1, 'node': 1, 'experimentId': 1}
     )
 
+    if batch is None:
+        raise BatchNotFoundException('Batch "{}" could not be found.'.format(batch_id))
+
     timestamp = time()
     attempts = batch['attempts']
     node_name = batch['node']
@@ -256,3 +259,7 @@ def batch_failure(
             }
         }
     )
+
+
+class BatchNotFoundException(Exception):
+    pass
