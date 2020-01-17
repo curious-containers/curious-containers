@@ -330,6 +330,7 @@ def detect_nvidia_docker_gpus(client, runtimes):
             GPU_QUERY_IMAGE,
             command=command,
             available_runtimes=runtimes,
+            remove=True,
             gpus='all'
         )  # type: Container
         container.start()
