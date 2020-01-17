@@ -1,6 +1,7 @@
 import sys
 
 import re
+import traceback
 from traceback import format_exc
 
 
@@ -21,7 +22,50 @@ def _lstrip_quarter(s):
 def exception_format(secret_values=None):
     exc_text = format_exc()
     exc_text = _hide_secret_values(exc_text, secret_values)
-    return [_lstrip_quarter(l.replace('"', '').replace("'", '').rstrip()) for l in exc_text.split('\n') if l]
+    return [_lstrip_quarter(elem.replace('"', '').replace("'", '').rstrip()) for elem in exc_text.split('\n') if elem]
+
+
+def full_class_name(o):
+    """
+    Returns the full qualified name of the class of o.
+
+    :param o: The object whose class name should be returned
+    :return: A str representing the class of o
+    :rtype: str
+    """
+    module = o.__class__.__module__
+    if module is None or module == str.__class__.__module__:
+        return o.__class__.__name__  # Avoid reporting __builtin__
+    else:
+        return module + '.' + o.__class__.__name__
+
+
+def log_format_exception(e):
+    """
+    Returns a formatted string describing the given error for logging purposes.
+
+    :param e: The exception to format
+    :return: A string containing a stacktrace and brief exception text
+    :rtype: str
+    """
+    tb_list = traceback.extract_tb(e.__traceback__)
+
+    max_filename_len = 0
+    for i in tb_list:
+        v = len(i.filename) + len(str(i.lineno))
+        if max_filename_len < v:
+            max_filename_len = v
+
+    text_l = []
+
+    for tb in tb_list:
+        text_l.append(('In {:' + str(max_filename_len+2) + '} in {}()').format(
+            '{}:{}'.format(tb.filename, tb.lineno),
+            tb.name
+        ))
+
+    text_l.append('[{}]: []'.format(full_class_name(e), str(e)))
+    return '\n'.join(text_l)
 
 
 def brief_exception_text(exception, secret_values=None):
@@ -73,23 +117,7 @@ class JobExecutionError(Exception):
     pass
 
 
-class CWLSpecificationError(Exception):
-    pass
-
-
 class JobSpecificationError(Exception):
-    pass
-
-
-class RedSpecificationError(Exception):
-    pass
-
-
-class RedValidationError(Exception):
-    pass
-
-
-class RedVariablesError(Exception):
     pass
 
 
@@ -105,9 +133,5 @@ class AccessError(Exception):
     pass
 
 
-class ParsingError(Exception):
-    pass
-
-
-class TemplateError(Exception):
+class InvalidExecutionEngineArgumentException(Exception):
     pass

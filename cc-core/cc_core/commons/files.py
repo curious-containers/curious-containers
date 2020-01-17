@@ -2,12 +2,9 @@ import os
 import stat
 import sys
 import json
-import tarfile
 import textwrap
 
 from ruamel.yaml import YAML, YAMLError
-
-from cc_core.commons.exceptions import AgentError
 
 JSON_INDENT = 4
 
@@ -35,19 +32,27 @@ def load(location, var_name):
     try:
         with open(os.path.expanduser(location)) as f:
             return f.read()
-    except:
-        raise AgentError('File "{}" for argument "{}" could not be loaded from file system'.format(location, var_name))
+    except OSError as e:
+        raise OSError(
+            'File "{}" for argument "{}" could not be loaded from file system. Failed with the following message:\n{}'
+            .format(location, var_name, str(e))
+        )
 
 
 def read(raw_data, var_name):
     try:
         data = yaml.load(raw_data)
     except YAMLError as e:
-        raise AgentError('data for argument "{}" is neither json nor yaml formatted. Failed with the following message:'
-                         '\n{}'.format(var_name, str(e)))
+        raise YAMLError(
+            'data for argument "{}" is neither json nor yaml formatted. Failed with the following message:\n{}'
+            .format(var_name, str(e))
+        )
 
     if not isinstance(data, dict):
-        raise AgentError('data for argument "{}" does not contain a dictionary.\ndata: "{}"'.format(var_name, data))
+        raise IOError(
+            'data for argument "{}" does not contain a dictionary.\ntype(data): "{}"'
+            .format(var_name, type(data).__name__)
+        )
 
     return data
 
@@ -57,7 +62,7 @@ def file_extension(dump_format):
         return dump_format
     if dump_format in ['yaml', 'yml']:
         return 'yml'
-    raise AgentError('invalid dump format "{}"'.format(dump_format))
+    raise IOError('invalid dump format "{}"'.format(dump_format))
 
 
 def dump(stream, dump_format, file_name):
@@ -68,7 +73,7 @@ def dump(stream, dump_format, file_name):
         with open(file_name, 'w') as f:
             yaml.dump(stream, f)
     else:
-        raise AgentError('invalid dump format "{}"'.format(dump_format))
+        raise IOError('invalid dump format "{}"'.format(dump_format))
 
 
 def dump_print(stream, dump_format, error=False):
@@ -83,7 +88,7 @@ def dump_print(stream, dump_format, error=False):
         else:
             yaml.dump(stream, sys.stdout)
     elif dump_format != 'none':
-        raise AgentError('invalid dump format "{}"'.format(dump_format))
+        raise IOError('invalid dump format "{}"'.format(dump_format))
 
 
 def wrapped_print(blocks, error=False):

@@ -113,14 +113,14 @@ class Auth:
             # create authorization cookie
             if cookie_token is None:
                 token = self._issue_token(username, ip)
-                user.set_authentication_cookie(encode_authentication_cookie(username, str(token)))
+                user.set_authentication_cookie(encode_authentication_cookie(username, str(token)).encode('utf-8'))
             else:
                 # do not create new cookie if one is present
-                user.set_authentication_cookie(encode_authentication_cookie(username, cookie_token))
+                user.set_authentication_cookie(encode_authentication_cookie(username, cookie_token).encode('utf-8'))
             return user
 
         if self._verify_user_by_cookie(username, cookie_token, ip):
-            user.set_authentication_cookie(encode_authentication_cookie(username, cookie_token))
+            user.set_authentication_cookie(encode_authentication_cookie(username, cookie_token).encode('utf-8'))
             return user
 
         self._add_block_entry(username)

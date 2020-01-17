@@ -9,30 +9,28 @@ import stat
 import subprocess
 import json
 import tempfile
-import urllib.request
 
 from argparse import ArgumentParser
+from functools import total_ordering
+from json import JSONDecodeError
 from traceback import format_exc
 from typing import List, Dict
-from urllib.error import URLError
-from urllib.parse import urlparse
 
-DESCRIPTION = 'Run an experiment as described in a BLUEFILE.'
+
+DESCRIPTION = 'Run an experiment as described in a RESTRICTED_RED_FILE.'
 JSON_INDENT = 2
+
+RESTRICTED_RED_INPUT_CLASSES = {'File', 'Directory'}
 
 
 def attach_args(parser):
     parser.add_argument(
-        'blue_file', action='store', type=str, metavar='BLUEFILE',
-        help='BLUEFILE (json) containing an experiment description as local PATH or http URL.'
+        'restricted_red_file', action='store', type=str, metavar='RESTRICTED_RED_FILE',
+        help='RESTRICTED_RED_FILE (json) containing an experiment description as local PATH or http URL.'
     )
     parser.add_argument(
         '-o', '--outputs', action='store_true',
-        help='Enable connectors specified in the BLUEFILE outputs section.'
-    )
-    parser.add_argument(
-        '-d', '--debug', action='store_true',
-        help='Write debug info, including detailed exceptions, to stdout.'
+        help='Enable connectors specified in the RESTRICTED_RED_FILE outputs section.'
     )
 
 
@@ -43,12 +41,7 @@ def main():
 
     result = run(args)
 
-    if args.__dict__.get('debug'):
-        print(json.dumps(result, indent=JSON_INDENT))
-
-    scheme = urlparse(args.blue_file).scheme
-    if _is_file_scheme_remote(scheme):
-        _post_result(args.blue_file, result)
+    print(json.dumps(result, indent=JSON_INDENT))
 
     if result['state'] == 'succeeded':
         return 0
@@ -64,7 +57,12 @@ class OutputMode(enum.Enum):
 def run(args):
     result = {
         'command': None,
-        'process': None,
+        'process': {
+            'returnCode': None,
+            'executed': False,
+            'stdout': None,
+            'stderr': None
+        },
         'debugInfo': None,
         'inputs': None,
         'outputs': None,
@@ -73,30 +71,34 @@ def run(args):
 
     connector_manager = ConnectorManager()
     try:
-        blue_location = args.blue_file
+        restricted_red_location = args.restricted_red_file
         if args.outputs:
             output_mode = OutputMode.Connectors
         else:
             output_mode = OutputMode.Directory
 
-        blue_data = get_blue_data(blue_location)
+        restricted_red_data = get_restricted_red_data(restricted_red_location)
 
-        if output_mode == OutputMode.Connectors and 'outputs' not in blue_data:
-            raise ExecutionError('--outputs/-o argument is set but no outputs section is defined in BLUE file.')
+        if output_mode == OutputMode.Connectors and 'outputs' not in restricted_red_data:
+            raise ExecutionError(
+                '--outputs/-o argument is set but no outputs section is defined in RESTRICTED_RED_FILE.'
+            )
 
-        # validate command
-        command = blue_data.get('command')
-        _validate_command(command)
-        result['command'] = command
+        # validate base_command and build command
+        base_command = restricted_red_data.get('command')
+        _validate_command(base_command)
+        result['command'] = base_command
+        cli_arguments = get_cli_arguments(restricted_red_data['cli']['inputs'])
+        command = generate_command(base_command, cli_arguments, restricted_red_data)
 
         # import, validate and execute connectors
-        inputs = blue_data.get('inputs')
+        inputs = restricted_red_data.get('inputs')
         if inputs is None:
-            raise ExecutionError('Invalid BLUE file. "inputs" is not specified.')
+            raise ExecutionError('Invalid RESTRICTED_RED_FILE. "inputs" is not specified.')
         connector_manager.import_input_connectors(inputs)
 
-        outputs = blue_data.get('outputs', {})
-        cli = blue_data.get('cli', {})
+        outputs = restricted_red_data.get('outputs', {})
+        cli = restricted_red_data.get('cli', {})
         cli_outputs = cli.get('outputs', {})
         cli_stdout = cli.get('stdout')
         cli_stderr = cli.get('stderr')
@@ -110,19 +112,17 @@ def run(args):
 
         # execute command
         try:
-            execution_result = execute(command)
+            execution_result = execute(command, stdout_file=cli_stdout, stderr_file=cli_stderr)
         except PermissionError as e:
             raise PermissionError(
                 'Could not execute command "{}" in directory "{}". Error:\n{}'.format(command, os.getcwd(), str(e))
             )
+        result['process']['returnCode'] = execution_result.return_code
+        result['process']['executed'] = True
+        result['process']['stdout'] = cli_stdout
+        result['process']['stderr'] = cli_stderr
         if not execution_result.successful():
-            result['process'] = execution_result.to_dict()
-            raise ExecutionError('Execution of command "{}" failed with the following message:\n{}'
-                                 .format(' '.join(command), execution_result.get_std_err()))
-
-        # write stderr/stdout file, if specified
-        _create_text_file(execution_result.std_out, cli_stdout)
-        _create_text_file(execution_result.std_err, cli_stderr)
+            raise ExecutionError('Execution of command "{}" failed.'.format(' '.join(command)))
 
         # check output files/directories
         connector_manager.check_outputs()
@@ -138,105 +138,51 @@ def run(args):
         result['state'] = 'failed'
     finally:
         # umount directories
-        umount_errors = connector_manager.umount_connectors()
-        errors_len = len(umount_errors)
-        umount_errors = [_format_exception(e) for e in umount_errors]
-        if errors_len == 1:
-            result['debugInfo'] += '\n{}'.format(umount_errors[0])
-        elif errors_len > 1:
-            result['debugInfo'] += '\n{}'.format('\n'.join(umount_errors))
+        umount_errors = [_format_exception(e) for e in connector_manager.umount_connectors()]
+        if umount_errors:
+            umount_errors.insert(0, 'Errors while unmounting directories:')
+            result['debugInfo'] = umount_errors
 
     return result
 
 
-def get_blue_data(blue_location):
+def get_restricted_red_data(restricted_red_location):
     """
-    If blue_file is an URL fetches this URL and loads the json content, otherwise tries to load the file as local file.
+    Tries to load the file as local file.
 
-    :param blue_location: An URL or local file path as string
-    :return: A tuple containing the content of the given file or url and a fetch mode.
+    :param restricted_red_location: A local file path as string
+    :return: The content of the given file as dictionary
     """
-    scheme = urlparse(blue_location).scheme
-
-    if _is_file_scheme_local(scheme):
-        try:
-            if scheme == 'path':
-                blue_location = blue_location[5:]
-            with open(blue_location, 'r') as blue_file:
-                try:
-                    return json.load(blue_file)
-                except Exception as e:
-                    raise ExecutionError('Could not decode blue file "{}". Blue file is not in json format.\n{}'
-                                         .format(blue_location, str(e)))
-        except FileNotFoundError as file_error:
-            raise ExecutionError('Could not find blue file "{}" locally. Failed with the following message:\n{}'
-                                 .format(blue_location, str(file_error)))
-    elif _is_file_scheme_remote(scheme):
-        try:
-            with urllib.request.urlopen(blue_location) as blue_file:
-                blue_str = blue_file.read().decode('utf-8')
-                return json.loads(blue_str)
-        except (URLError, ValueError) as http_error:
-            raise ExecutionError('Could not fetch blue file "{}". Failed with the following message:\n{}.'
-                                 .format(blue_location, str(http_error)))
-
-    raise ExecutionError('Unknown scheme for blue file "{}". Should be on of ["", "path", "http", "https"] but "{}"'
-                         ' was found.'.format(blue_location, scheme))
-
-
-def _is_file_scheme_local(file_scheme):
-    return file_scheme == 'path' or file_scheme == ''
-
-
-def _is_file_scheme_remote(file_scheme):
-    return file_scheme == 'http' or file_scheme == 'https'
-
-
-def _post_result(url, result):
-    """
-    Posts the given result dictionary to the given url
-
-    :param url: The url to post the result to
-    :param result: The result to post
-    """
-    bytes_data = bytes(json.dumps(result), encoding='utf-8')
-
-    request = urllib.request.Request(url, data=bytes_data)
-    request.add_header('Content-Type', 'application/json')
-
-    # ignore response here
-    urllib.request.urlopen(request)
+    try:
+        with open(restricted_red_location, 'r') as restricted_red_file:
+            return json.load(restricted_red_file)
+    except FileNotFoundError as file_error:
+        raise ExecutionError(
+            'Could not find restricted RED file "{}" locally. Failed with the following message:\n{}'
+            .format(restricted_red_location, str(file_error))
+        )
+    except JSONDecodeError as e:
+        raise ExecutionError(
+            'Could not parse restricted RED file "{}". File is not json formatted.\n{}'
+            .format(restricted_red_location, str(e))
+        )
 
 
 def _validate_command(command):
     if command is None:
-        raise ExecutionError('Invalid BLUE File. "command" is not specified.')
+        raise ExecutionError('Invalid RESTRICTED_RED_FILE. "command" is not specified.')
 
     if not isinstance(command, list):
-        raise ExecutionError('Invalid BLUE File. "command" has to be a list of strings.\n'
-                             'command: "{}"'.format(command))
+        raise ExecutionError(
+            'Invalid RESTRICTED_RED_FILE. "command" has to be a list of strings.\ncommand: "{}"'.format(command)
+        )
 
     for s in command:
         if not isinstance(s, str):
-            raise ExecutionError('Invalid BLUE File. "command" has to be a list of strings.\n'
-                                 'command: "{}"\n'
-                                 '"{}" is not a string'.format(command, s))
-
-
-def _create_text_file(lines, path):
-    """
-    Creates a file with the given path and fills it with lines. The file is located in the current working directory.
-    This function is meant for creating the stdout/stderr file after a command execution has been successful.
-
-    :param lines: The content of the file to create
-    :type lines: List[str]
-    :param path: The path of the file to create. If path is None, this function does nothing
-    :type path: str
-    """
-    if path:
-        with open(os.path.abspath(path), 'w') as f:
-            for line in lines:
-                f.write(line + '\n')
+            raise ExecutionError(
+                'Invalid RESTRICTED_RED_FILE. "command" has to be a list of strings.\ncommand: "{}"\n'
+                '"{}" is not a string'.format(command, s)
+            )
 
 
 def is_directory_writable(d):
@@ -300,8 +246,10 @@ def resolve_connector_cli_version(connector_command, connector_cli_version_cache
         return cli_version
     else:
         std_err = result.get_std_err()
-        raise ConnectorError('Could not detect cli version for connector "{}". Failed with following message:\n{}'
-                             .format(connector_command, std_err))
+        raise ConnectorError(
+            'Could not detect cli version for connector "{}". Failed with following message:\n{}'
+            .format(connector_command, std_err)
+        )
 
 
 def execute_connector(connector_command, top_level_argument, access=None, path=None, listing=None):
@@ -614,8 +562,8 @@ class InputConnectorRunner:
     A ConnectorRunner subclass is associated with a connector cli-version.
     Subclasses implement different cli-versions for connectors.
 
-    A ConnectorRunner instance is associated with a blue input, that uses a connector.
-    For every blue input, that uses a connector a new ConnectorRunner instance is created.
+    A ConnectorRunner instance is associated with a restricted_red input, that uses a connector.
+    For every restricted_red input, that uses a connector a new ConnectorRunner instance is created.
     """
 
     def __init__(self,
@@ -632,7 +580,7 @@ class InputConnectorRunner:
         """
         Initiates an InputConnectorRunner.
 
-        :param input_key: The blue input key
+        :param input_key: The restricted_red input key
         :param input_index: The input index in case of File/Directory lists
         :param connector_command: The connector command to execute
         :param input_class: Either 'File' or 'Directory'
@@ -857,15 +805,15 @@ class OutputConnectorRunner:
     A ConnectorRunner subclass is associated with a connector cli-version.
     Subclasses implement different cli-versions for connectors.
 
-    A ConnectorRunner instance is associated with a blue input, that uses a connector.
-    For every blue output, that uses a connector a new OutputConnectorRunner instance is created.
+    A ConnectorRunner instance is associated with a restricted_red input, that uses a connector.
+    For every restricted_red output, that uses a connector a new OutputConnectorRunner instance is created.
     """
 
     def __init__(self, output_key, connector_command, output_class, access, glob_pattern, listing=None):
         """
         initiates a OutputConnectorRunner.
 
-        :param output_key: The blue output key
+        :param output_key: The restricted_red output key
         :type output_key: str
         :param connector_command: The connector command to execute
         :type connector_command: str
@@ -1049,77 +997,97 @@ class InputConnectorRunner01(InputConnectorRunner):
     """
 
     def receive_file(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'receive-file',
-                                             access=self._access,
-                                             path=self._path)
+        execution_result = execute_connector(
+            self._connector_command,
+            'receive-file',
+            access=self._access,
+            path=self._path
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to receive file for input key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self.format_input_key(), execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to receive file for input key "{}".\nFailed with the following message:\n{}'
+                .format(self.format_input_key(), execution_result.get_std_err())
+            )
 
     def receive_file_validate(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'receive-file-validate',
-                                             access=self._access)
+        execution_result = execute_connector(
+            self._connector_command,
+            'receive-file-validate',
+            access=self._access
+        )
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to validate receive file for input key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self.format_input_key(), execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to validate receive file for input key "{}".\nFailed with the following message:\n{}'
+                .format(self.format_input_key(), execution_result.get_std_err())
+            )
 
     def receive_dir(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'receive-dir',
-                                             access=self._access,
-                                             path=self._path,
-                                             listing=self._listing)
+        execution_result = execute_connector(
+            self._connector_command,
+            'receive-dir',
+            access=self._access,
+            path=self._path,
+            listing=self._listing
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to receive directory for input key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self.format_input_key(), execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to receive directory for input key "{}".\nFailed with the following message:\n{}'
+                .format(self.format_input_key(), execution_result.get_std_err())
+            )
 
     def receive_dir_validate(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'receive-dir-validate',
-                                             access=self._access,
-                                             listing=self._listing)
+        execution_result = execute_connector(
+            self._connector_command,
+            'receive-dir-validate',
+            access=self._access,
+            listing=self._listing
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to validate receive directory for input key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self.format_input_key(), execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to validate receive directory for input key "{}".\n'
+                'Failed with the following message:\n{}'
+                .format(self.format_input_key(), execution_result.get_std_err())
+            )
 
     def mount_dir(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'mount-dir',
-                                             access=self._access,
-                                             path=self._path)
+        execution_result = execute_connector(
+            self._connector_command,
+            'mount-dir',
+            access=self._access,
+            path=self._path
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to mount directory for input key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self.format_input_key(), execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to mount directory for input key "{}".\nFailed with the following message:\n{}'
+                .format(self.format_input_key(), execution_result.get_std_err())
+            )
 
     def mount_dir_validate(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'mount-dir-validate',
-                                             access=self._access)
+        execution_result = execute_connector(
+            self._connector_command,
+            'mount-dir-validate',
+            access=self._access
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to validate mount directory for input key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self.format_input_key(), execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to validate mount directory for input key "{}".\n'
+                'Failed with the following message:\n{}'
+                .format(self.format_input_key(), execution_result.get_std_err())
+            )
 
     def umount_dir(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'umount-dir', path=self._path)
+        execution_result = execute_connector(self._connector_command, 'umount-dir', path=self._path)
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to umount directory for input key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self.format_input_key(), execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to umount directory for input key "{}".\nFailed with the following message:\n{}'
+                .format(self.format_input_key(), execution_result.get_std_err())
+            )
 
 
 class OutputConnectorRunner01(OutputConnectorRunner):
@@ -1128,48 +1096,62 @@ class OutputConnectorRunner01(OutputConnectorRunner):
     """
 
     def send_file(self, path):
-        execution_result = execute_connector(self._connector_command,
-                                             'send-file',
-                                             access=self._access,
-                                             path=path)
+        execution_result = execute_connector(
+            self._connector_command,
+            'send-file',
+            access=self._access,
+            path=path
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to send file for output key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self._output_key, execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to send file for output key "{}".\nFailed with the following message:\n{}'
+                .format(self._output_key, execution_result.get_std_err())
+            )
 
     def send_file_validate(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'send-file-validate',
-                                             access=self._access)
+        execution_result = execute_connector(
+            self._connector_command,
+            'send-file-validate',
+            access=self._access
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to validate send file for output key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self._output_key, execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to validate send file for output key "{}".\nFailed with the following message:\n{}'
+                .format(self._output_key, execution_result.get_std_err())
+            )
 
     def send_dir(self, path):
-        execution_result = execute_connector(self._connector_command,
-                                             'send-dir',
-                                             access=self._access,
-                                             path=path,
-                                             listing=self._listing)
+        execution_result = execute_connector(
+            self._connector_command,
+            'send-dir',
+            access=self._access,
+            path=path,
+            listing=self._listing
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to validate send directory for output key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self._output_key, execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to validate send directory for output key "{}".\n'
+                'Failed with the following message:\n{}'
+                .format(self._output_key, execution_result.get_std_err())
+            )
 
     def send_dir_validate(self):
-        execution_result = execute_connector(self._connector_command,
-                                             'send-dir-validate',
-                                             access=self._access,
-                                             listing=self._listing)
+        execution_result = execute_connector(
+            self._connector_command,
+            'send-dir-validate',
+            access=self._access,
+            listing=self._listing
+        )
 
         if not execution_result.successful():
-            raise ConnectorError('Connector failed to validate send directory for output key "{}".\n'
-                                 'Failed with the following message:\n{}'
-                                 .format(self._output_key, execution_result.get_std_err()))
+            raise ConnectorError(
+                'Connector failed to validate send directory for output key "{}".\n'
+                'Failed with the following message:\n{}'
+                .format(self._output_key, execution_result.get_std_err())
+            )
 
 
 CONNECTOR_CLI_VERSION_INPUT_RUNNER_MAPPING = {
@@ -1193,7 +1175,10 @@ def create_input_connector_runner(input_key, input_value, input_index, assert_cl
     :rtype InputConnectorRunner
     """
     try:
-        connector_data = input_value['connector']
+        try:
+            connector_data = input_value['connector']
+        except TypeError:
+            raise Exception('input key: {}; input_value: {}; index: {}'.format(input_key, input_value, input_index))
         connector_command = connector_data['command']
         access = connector_data['access']
 
@@ -1240,16 +1225,18 @@ def create_input_connector_runner(input_key, input_value, input_index, assert_cl
         raise Exception('This agent does not support connector cli-version "{}", but needed by connector "{}"'
                         .format(cli_version, connector_command))
 
-    connector_runner = connector_runner_class(input_key,
-                                              input_index,
-                                              connector_command,
-                                              input_class,
-                                              mount,
-                                              access,
-                                              path,
-                                              listing,
-                                              checksum,
-                                              size)
+    connector_runner = connector_runner_class(
+        input_key,
+        input_index,
+        connector_command,
+        input_class,
+        mount,
+        access,
+        path,
+        listing,
+        checksum,
+        size
+    )
 
     return connector_runner
 
@@ -1260,12 +1247,14 @@ CONNECTOR_CLI_VERSION_OUTPUT_RUNNER_MAPPING = {
 }
 
 
-def create_output_connector_runner(output_key,
-                                   output_value,
-                                   cli_output_value,
-                                   connector_cli_version_cache,
-                                   cli_stdout,
-                                   cli_stderr):
+def create_output_connector_runner(
+        output_key,
+        output_value,
+        cli_output_value,
+        connector_cli_version_cache,
+        cli_stdout,
+        cli_stderr
+):
     """
     Creates a proper OutputConnectorRunner instance for the given connector command.
 
@@ -1325,12 +1314,14 @@ def create_output_connector_runner(output_key,
         raise Exception('This agent does not support connector cli-version "{}", but needed by connector "{}"'
                         .format(cli_version, connector_command))
 
-    connector_runner = connector_runner_class(output_key,
-                                              connector_command,
-                                              output_class,
-                                              access,
-                                              glob_pattern,
-                                              listing)
+    connector_runner = connector_runner_class(
+        output_key,
+        connector_command,
+        output_class,
+        access,
+        glob_pattern,
+        listing
+    )
 
     return connector_runner
 
@@ -1340,7 +1331,7 @@ def create_cli_output_runner(cli_output_key, cli_output_value, output_value=None
     Creates a CliOutputRunner.
 
     :param cli_output_key: The output key of the corresponding cli output
-    :param cli_output_value: The output value given in the blue file of the corresponding cli output
+    :param cli_output_value: The output value given in the restricted_red file of the corresponding cli output
     :param output_value: The job output value for this output key. Can be None
     :param cli_stdout: The path to the stdout file
     :param cli_stderr: The path to the stderr file
@@ -1397,59 +1388,102 @@ class ExecutionResult:
         self.return_code = return_code
 
     def get_std_err(self):
+        if self.std_err is None:
+            return None
         return '\n'.join(self.std_err)
 
     def get_std_out(self):
+        if self.std_out is None:
+            return None
         return '\n'.join(self.std_out)
 
     def successful(self):
         return self.return_code == 0
 
     def to_dict(self):
-        return {'stdErr': self.std_err,
-                'stdOut': self.std_out,
-                'returnCode': self.return_code}
+        d = {'returnCode': self.return_code}
+        if self.std_out:
+            d['stdOut'] = self.std_out
+        if self.std_err:
+            d['stdErr'] = self.std_err
+        return d
 
 
-def _exec(command, work_dir):
+def _exec(command, work_dir, stdout=None, stderr=None):
+    """
+    Executes the given command.
+
+    :param command: The command to execute
+    :param work_dir: The working directory where to execute the command
+    :param stdout: Specifies a path, where the stdout file should be created. If None subprocess.PIPE is used.
+    :param stderr: Specifies a path, where the stderr file should be created. If None subprocess.PIPE is used.
+    :return: a tuple (return_code, stdout, stderr). If a filename for stdout/stderr is given, the return code will
+             contain None for stdout/stderr
+    """
+    if stdout is None:
+        stdout_file = subprocess.PIPE
+    else:
+        stdout_file = open(stdout, 'w')
+
+    if stderr is None:
+        stderr_file = subprocess.PIPE
+    else:
+        stderr_file = open(stderr, 'w')
+
     try:
-        sp = subprocess.Popen(command,
-                              stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE,
-                              cwd=work_dir,
-                              universal_newlines=True,
-                              encoding='utf-8')
+        sp = subprocess.Popen(
+            command,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            cwd=work_dir,
+            universal_newlines=True,
+            encoding='utf-8'
+        )
     except TypeError:
-        sp = subprocess.Popen(command,
-                              stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE,
-                              cwd=work_dir,
-                              universal_newlines=True)
-    return sp
+        sp = subprocess.Popen(
+            command,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            cwd=work_dir,
+            universal_newlines=True
+        )
+
+    std_out, std_err = sp.communicate()
+    return_code = sp.returncode
+
+    return return_code, std_out, std_err
 
 
-def execute(command, work_dir=None):
+def execute(command, work_dir=None, stdout_file=None, stderr_file=None):
     """
     Executes a given commandline command and returns a dictionary with keys: 'returnCode', 'stdOut', 'stdErr'
 
     :param command: The command to execute as list of strings.
     :param work_dir: The working directory for the executed command
-    :return: An ExecutionResult
+    :param stdout_file: A path, specifying where the stdout of the command should be saved. If None stdout is returned
+                        in the execution result
+    :param stderr_file: A path, specifying where the stderr of the command should be saved. If None stderr is returned
+                        in the execution result
+    :return: An ExecutionResult. stdout/stderr of the execution result will be None, if stdout_file/stderr_file is given
+    :rtype: ExecutionResult
     """
     if shutil.which(command[0]) is None:
         return ExecutionResult([], ['Command "{}" not in PATH.'.format(command[0])], 127)
 
     try:
-        sp = _exec(command, work_dir)
+        return_code, std_out, std_err = _exec(command, work_dir, stdout=stdout_file, stderr=stderr_file)
     except FileNotFoundError as e:
         error_msg = ['Command "{}" not found.'.format(command[0])]
         error_msg.extend(_split_lines(str(e)))
         return ExecutionResult([], error_msg, 127)
 
-    std_out, std_err = sp.communicate()
-    return_code = sp.returncode
+    if std_out:
+        std_out = _split_lines(std_out)
 
-    return ExecutionResult(_split_lines(std_out), _split_lines(std_err), return_code)
+    if std_err:
+        std_err = _split_lines(std_err)
+
+    return ExecutionResult(std_out, std_err, return_code)
 
 
 def format_key_index(input_key, input_index=None):
@@ -1472,23 +1506,30 @@ class ConnectorManager:
         :param inputs: The inputs to create Runner for
         """
         for input_key, input_value in inputs.items():
+            if not _is_connector_input_value(input_value):
+                continue
+
             if isinstance(input_value, dict):
-                runner = create_input_connector_runner(input_key,
-                                                       input_value,
-                                                       None,
-                                                       None,
-                                                       False,
-                                                       self._connector_cli_version_cache)
+                runner = create_input_connector_runner(
+                    input_key,
+                    input_value,
+                    None,
+                    None,
+                    False,
+                    self._connector_cli_version_cache
+                )
                 self._input_runners.append(runner)
             elif isinstance(input_value, list):
                 assert_class = None
                 for index, sub_input in enumerate(input_value):
-                    runner = create_input_connector_runner(input_key,
-                                                           sub_input,
-                                                           index,
-                                                           assert_class,
-                                                           True,
-                                                           self._connector_cli_version_cache)
+                    runner = create_input_connector_runner(
+                        input_key,
+                        sub_input,
+                        index,
+                        assert_class,
+                        True,
+                        self._connector_cli_version_cache
+                    )
                     assert_class = runner.get_input_class()
                     self._input_runners.append(runner)
 
@@ -1682,5 +1723,414 @@ class ExecutionError(Exception):
     pass
 
 
+class RedSpecificationError(Exception):
+    pass
+
+
+class JobSpecificationError(Exception):
+    pass
+
+
+# ------------ Command building -----------------
+
+def generate_command(base_command, cli_arguments, batch):
+    """
+    Creates a command from the cli description and a given batch.
+
+    :param base_command: The base command to use
+    :param cli_arguments: The arguments of the described tool
+    :param batch: The batch to execute
+    :return: A list of string representing the created command
+    """
+    command = base_command.copy()
+
+    for cli_argument in cli_arguments:
+        batch_value = batch['inputs'].get(cli_argument.input_key)
+        execution_argument = create_execution_argument(cli_argument, batch_value)
+        command.extend(execution_argument)
+
+    return command
+
+
+def create_execution_argument(cli_argument, batch_value):
+    """
+    Creates a list of strings representing an execution argument. Like ['--mydir=', '/path/to/file']
+
+    :param cli_argument: The cli argument
+    :param batch_value: The batch value corresponding to the cli argument. Can be None
+    :return: A list of strings, that can be used to extend the command. Returns an empty list if (cli_argument is
+             optional and batch_value is None) or (cli argument is array and len(batch_value) is 0)
+    :raise JobSpecificationError: If cli argument is mandatory, but batch value is None
+                                  If Cli Description defines an array, but job does not define a list
+    """
+    # handle optional arguments
+    if batch_value is None:
+        if cli_argument.is_optional():
+            return []
+        else:
+            raise JobSpecificationError('Required argument "{}" is missing'.format(cli_argument.input_key))
+
+    argument_list = _create_argument_list(cli_argument, batch_value)
+
+    # join argument list, depending on item separator
+    if argument_list and cli_argument.item_separator:
+        argument_list = [cli_argument.item_separator.join(argument_list)]
+
+    return _argument_list_to_execution_argument(argument_list, cli_argument, batch_value)
+
+
+class InputType:
+    class InputCategory(enum.Enum):
+        File = 0
+        Directory = 1
+        string = 2
+        int = 3
+        long = 4
+        float = 5
+        double = 6
+        boolean = 7
+
+    def __init__(self, input_category, is_array, is_optional):
+        self.input_category = input_category
+        self._is_array = is_array
+        self._is_optional = is_optional
+
+    @staticmethod
+    def from_string(s):
+        is_optional = s.endswith('?')
+        if is_optional:
+            s = s[:-1]
+
+        is_array = s.endswith('[]')
+        if is_array:
+            s = s[:-2]
+
+        input_category = None
+        for ic in InputType.InputCategory:
+            if s == ic.name:
+                input_category = ic
+
+        if input_category is None:
+            raise RedSpecificationError('The given input type "{}" is not valid'.format(s))
+
+        return InputType(input_category, is_array, is_optional)
+
+    def to_string(self):
+        return '{}{}{}'.format(self.input_category.name,
+                               '[]' if self._is_array else '',
+                               '?' if self._is_optional else '')
+
+    def __repr__(self):
+        return self.to_string()
+
+    def __eq__(self, other):
+        return (self.input_category == other.input_category) and \
+               (self._is_array == other.is_array()) and \
+               (self._is_optional == other.is_optional())
+
+    def is_file(self):
+        return self.input_category == InputType.InputCategory.File
+
+    def is_directory(self):
+        return self.input_category == InputType.InputCategory.Directory
+
+    def is_array(self):
+        return self._is_array
+
+    def is_optional(self):
+        return self._is_optional
+
+    def is_primitive(self):
+        return (self.input_category != InputType.InputCategory.Directory) and \
+               (self.input_category != InputType.InputCategory.File)
+
+
+INPUT_CATEGORY_REPRESENTATION_MAPPER = {
+    InputType.InputCategory.File: lambda batch_value: batch_value['path'],
+    InputType.InputCategory.Directory: lambda batch_value: batch_value['path'],
+    InputType.InputCategory.string: lambda batch_value: batch_value,
+    InputType.InputCategory.int: lambda batch_value: str(batch_value),
+    InputType.InputCategory.long: lambda batch_value: str(batch_value),
+    InputType.InputCategory.float: lambda batch_value: str(batch_value),
+    InputType.InputCategory.double: lambda batch_value: str(batch_value),
+    InputType.InputCategory.boolean: lambda batch_value: str(batch_value)
+}
+
+
+def _create_argument_list(cli_argument, batch_value):
+    """
+    Creates the argument list for an execution argument.
+    Prefix is not included.
+    Elements are not joined with item_separator.
+
+    :param cli_argument: An cli argument
+    :param batch_value: The batch value corresponding to the cli argument.
+    :return: A list of strings representing the argument list of this cli argument.
+    """
+    argument_list = []
+    if cli_argument.is_array():
+        if not isinstance(batch_value, list):
+            raise JobSpecificationError('For input key "{}":\nDescription defines an array, '
+                                        'but job is not given as list'.format(cli_argument.input_key))
+
+        # handle boolean arrays special
+        if cli_argument.is_boolean():
+            argument_list = _get_boolean_array_argument_list(cli_argument, batch_value)
+        else:
+            for sub_batch_value in batch_value:
+                r = INPUT_CATEGORY_REPRESENTATION_MAPPER[cli_argument.get_type_category()](sub_batch_value)
+                argument_list.append(r)
+    else:
+        # do not insert anything for boolean
+        if not cli_argument.is_boolean():
+            argument_list.append(INPUT_CATEGORY_REPRESENTATION_MAPPER[cli_argument.get_type_category()](batch_value))
+
+    return argument_list
+
+
+def _get_boolean_array_argument_list(cli_argument, batch_value):
+    """
+    Creates a list of strings representing an execution argument for boolean arrays. Like ['true', 'False']
+
+    :param cli_argument: The cli argument. (Should be an boolean array)
+    :param batch_value: The batch value corresponding to the cli argument. Should contain any number of booleans.
+    :return: A list of strings representing
+    """
+    argument_list = []
+    if cli_argument.item_separator:
+        for sub_batch_value in batch_value:
+            r = INPUT_CATEGORY_REPRESENTATION_MAPPER[cli_argument.get_type_category()](sub_batch_value)
+            argument_list.append(r)
+    return argument_list
+
+
+def _argument_list_to_execution_argument(argument_list, cli_argument, batch_value):
+    """
+    Returns a list of strings representing the execution argument for the given cli argument.
+
+    :param argument_list: The list of argument without prefix
+    :param cli_argument: The cli argument whose prefix might be added.
+    :param batch_value: The batch value corresponding to the cli argument
+    """
+    execution_argument = []
+
+    if cli_argument.prefix:
+        do_separate = cli_argument.separate
+
+        # do separate, if the cli argument is an array and the item separator is not given
+        if cli_argument.is_array() and not cli_argument.item_separator:
+            do_separate = True
+
+        should_add_prefix = True
+        # do not add prefix if input value is an empty list
+        if cli_argument.is_array():
+            if not batch_value:
+                should_add_prefix = False
+
+        # handle prefix special for boolean values and arrays
+        # do not add prefix, if boolean value is False or array of booleans is empty
+        if cli_argument.is_boolean():
+            if not batch_value:
+                should_add_prefix = False
+
+        if should_add_prefix:
+            if do_separate:
+                execution_argument.append(cli_argument.prefix)
+                execution_argument.extend(argument_list)
+            else:
+                # This case only occurs for boolean arrays, if prefix is set, separate is set to false and no
+                # itemSeparator is given and the corresponding input list is not empty
+                if not argument_list:
+                    execution_argument.append(cli_argument.prefix)
+                else:
+                    assert len(argument_list) == 1
+                    joined_argument = '{}{}'.format(cli_argument.prefix, argument_list[0])
+                    execution_argument.append(joined_argument)
+    else:
+        execution_argument.extend(argument_list)
+
+    return execution_argument
+
+
+def get_cli_arguments(cli_inputs):
+    """
+    Returns a sorted list of cli arguments.
+
+    :param cli_inputs: The cli inputs description
+    :return: A list of CliArguments
+    """
+    cli_arguments = []
+    for input_key, cli_input_description in cli_inputs.items():
+        cli_arguments.append(CliArgument.from_cli_input_description(input_key, cli_input_description))
+    return sorted(cli_arguments, key=lambda cli_argument: cli_argument.argument_position)
+
+
+class CliArgument:
+    def __init__(self, input_key, argument_position, input_type, prefix, separate, item_separator):
+        """
+        Creates a new CliArgument.
+
+        :param input_key: The input key of the cli argument
+        :param argument_position: The type of the cli argument (Positional, Named)
+        :param input_type: The type of the input key
+        :param prefix: The prefix to prepend to the value
+        :param separate: Separate prefix and value
+        :param item_separator: The string to join the elements of an array
+        """
+        self.input_key = input_key
+        self.argument_position = argument_position
+        self.input_type = input_type
+        self.prefix = prefix
+        self.separate = separate
+        self.item_separator = item_separator
+
+    def __repr__(self):
+        return 'CliArgument(\n\t{}\n)'.format('\n\t'.join(['input_key={}'.format(self.input_key),
+                                                           'argument_position={}'.format(self.argument_position),
+                                                           'input_type={}'.format(self.input_type),
+                                                           'prefix={}'.format(self.prefix),
+                                                           'separate={}'.format(self.separate),
+                                                           'item_separator={}'.format(self.item_separator)]))
+
+    @staticmethod
+    def new_positional_argument(input_key, input_type, input_binding_position, item_separator):
+        return CliArgument(input_key=input_key,
+                           argument_position=CliArgumentPosition.new_positional_argument(input_binding_position),
+                           input_type=input_type,
+                           prefix=None,
+                           separate=False,
+                           item_separator=item_separator)
+
+    @staticmethod
+    def new_named_argument(input_key, input_type, prefix, separate, item_separator):
+        return CliArgument(input_key=input_key,
+                           argument_position=CliArgumentPosition.new_named_argument(),
+                           input_type=input_type,
+                           prefix=prefix,
+                           separate=separate,
+                           item_separator=item_separator)
+
+    def is_array(self):
+        return self.input_type.is_array()
+
+    def is_optional(self):
+        return self.input_type.is_optional()
+
+    def is_positional(self):
+        return self.argument_position.is_positional()
+
+    def is_named(self):
+        return self.argument_position.is_named()
+
+    def get_type_category(self):
+        return self.input_type.input_category
+
+    def is_boolean(self):
+        return self.input_type.input_category == InputType.InputCategory.boolean
+
+    @staticmethod
+    def from_cli_input_description(input_key, cli_input_description):
+        """
+        Creates a new CliArgument depending of the information given in the cli input description.
+        inputBinding keys = 'prefix' 'separate' 'position' 'itemSeparator'
+
+        :param input_key: The input key of the cli input description
+        :param cli_input_description: red_data['cli']['inputs'][input_key]
+        :return: A new CliArgument
+        """
+        input_binding = cli_input_description['inputBinding']
+        input_binding_position = input_binding.get('position', 0)
+        prefix = input_binding.get('prefix')
+        separate = input_binding.get('separate', True)
+        item_separator = input_binding.get('itemSeparator')
+
+        input_type = InputType.from_string(cli_input_description['type'])
+
+        if prefix:
+            arg = CliArgument.new_named_argument(input_key, input_type, prefix, separate, item_separator)
+        else:
+            arg = CliArgument.new_positional_argument(input_key, input_type, input_binding_position, item_separator)
+        return arg
+
+
+@total_ordering
+class CliArgumentPosition:
+    class CliArgumentPositionType(enum.Enum):
+        Positional = 0
+        Named = 1
+
+    def __init__(self, argument_position_type, binding_position):
+        """
+        Creates a new CliArgumentPosition.
+
+        :param argument_position_type: The position type of this argument position
+        """
+        self.argument_position_type = argument_position_type
+        self.binding_position = binding_position
+
+    @staticmethod
+    def new_positional_argument(binding_position):
+        """
+        Creates a new positional argument position.
+
+        :param binding_position: The input position of the argument
+        :return: A new CliArgumentPosition with position_type Positional
+        """
+        return CliArgumentPosition(CliArgumentPosition.CliArgumentPositionType.Positional, binding_position)
+
+    @staticmethod
+    def new_named_argument():
+        """
+        Creates a new named argument position.
+
+        :return: A new CliArgumentPosition with position_type Named.
+        """
+        return CliArgumentPosition(CliArgumentPosition.CliArgumentPositionType.Named, 0)
+
+    def is_positional(self):
+        return self.argument_position_type is CliArgumentPosition.CliArgumentPositionType.Positional
+
+    def is_named(self):
+        return self.argument_position_type is CliArgumentPosition.CliArgumentPositionType.Named
+
+    def __eq__(self, other):
+        return (self.argument_position_type is other.argument_position_type) \
+               and (self.binding_position == other.binding_position)
+
+    def __lt__(self, other):
+        if self.argument_position_type is CliArgumentPosition.CliArgumentPositionType.Positional:
+            if other.argument_position_type is CliArgumentPosition.CliArgumentPositionType.Positional:
+                return self.binding_position < other.binding_position
+            else:
+                return True
+        else:
+            return False
+
+    def __repr__(self):
+        return 'CliArgumentPosition(argument_position_type={}, binding_position={})' \
+            .format(self.argument_position_type, self.binding_position)
+
+
+def _is_connector_input_value(input_value):
+    """
+    Returns whether the given input value defines a connector.
+
+    :param input_value: The input value as list or value, that may contain a connector
+    :return: True, if input value contains a connector definition, otherwise false
+    """
+    if isinstance(input_value, list):
+        if not input_value:
+            return False
+
+        for sub_input_value in input_value:
+            if not _is_connector_input_value(sub_input_value):
+                return False
+        return True
+    elif isinstance(input_value, dict):
+        return input_value.get('class') in RESTRICTED_RED_INPUT_CLASSES
+
+    return False
+
+
 if __name__ == '__main__':
-    main()
+    exit(main())

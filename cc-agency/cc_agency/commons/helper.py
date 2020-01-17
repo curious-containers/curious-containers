@@ -4,11 +4,53 @@ from binascii import hexlify
 from time import time
 
 import flask
-from flask import request
+from flask import request, stream_with_context
 from bson.objectid import ObjectId
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from gridfs import GridOut
+
+
+USER_SPECIFIED_STDOUT_KEY = 'usedSpecifiedStdout'
+USER_SPECIFIED_STDERR_KEY = 'usedSpecifiedStderr'
+STDOUT_FILE_KEY = 'cliStdout'
+STDERR_FILE_KEY = 'cliStderr'
+
+
+def str_to_bool(s):
+    """
+    Converts the given string into a boolean.
+
+    Values resulting in True:
+    - a string representing an integer != 0
+    - the string 'true' ignoring upper/lower case
+    - the string 'y' or 'yes' ignoring upper/lower case
+
+    Other values will result in False as return value.
+
+    :param s: The string to convert
+    :type s: str
+    :return: A boolean value
+    :rtype: bool
+    """
+    if isinstance(s, bool):
+        return s
+
+    if not isinstance(s, str):
+        return False
+
+    if s.lower() in ('true', 'yes', 'y'):
+        return True
+
+    try:
+        i = int(s)
+        if i != 0:
+            return True
+    except ValueError:
+        pass
+
+    return False
 
 
 def decode_authentication_cookie(cookie_value):
@@ -44,6 +86,46 @@ def encode_authentication_cookie(username, token):
         base64.b64encode(username.encode('utf-8')).decode('utf-8'),
         token
     )
+
+
+def get_gridfs_filename(batch_id, file_identifier):
+    """
+    Converts the given batch_id and the stdout/stderr string into a GridFS filename.
+
+    :param batch_id: The batch id this stdout/stderr file is associated with
+    :type batch_id: str
+    :param file_identifier: The identifier of the file
+    :type file_identifier: str
+    :return: A string representing the stdout/stderr filename for the given batch
+    :rtype: str
+    """
+    return '{}_{}'.format(batch_id, file_identifier)
+
+
+def create_file_flask_response(source_file, auth, authentication_cookie=None):
+    """
+    Creates a flask response object, containing the given data given by source_file as plain text and the given
+    authentication cookie.
+
+    :param source_file: The data to send back
+    :type source_file: str or bytes or GridOut
+    :param auth: The auth object to use
+    :param authentication_cookie: The value of the authentication cookie
+    :return: A flask response object
+    """
+    flask_response = flask.Response(
+        stream_with_context(source_file),
+        content_type='text/plain',
+        status='200'
+    )
+
+    if authentication_cookie:
+        flask_response.set_cookie(
+            authentication_cookie[0],
+            authentication_cookie[1],
+            expires=time() + auth.tokens_valid_for_seconds
+        )
+    return flask_response
 
 
 def create_flask_response(data, auth, authentication_cookie=None):
@@ -117,7 +199,8 @@ def batch_failure(
     :type current_state: str
     :param disable_retry_if_failed: If set to True, the batch is failed immediately, without giving another attempt
     :param docker_stats: The optional stats of the docker container, that will written under the "docker_stats" key in
-                         the history of this batch
+                         the history of this batch.
+                         This feature is not implemented at the moment.
     :type docker_stats: dict
     """
     if current_state in ['succeeded', 'failed', 'cancelled']:
@@ -129,6 +212,9 @@ def batch_failure(
         {'_id': bson_id},
         {'attempts': 1, 'node': 1, 'experimentId': 1}
     )
+
+    if batch is None:
+        raise BatchNotFoundException('Batch "{}" could not be found.'.format(batch_id))
 
     timestamp = time()
     attempts = batch['attempts']
@@ -151,6 +237,9 @@ def batch_failure(
             new_state = 'failed'
             new_node = node_name
 
+    # dont use docker stats, because they do not contain useful information
+    del docker_stats
+
     mongo.db['batches'].update_one(
         {'_id': bson_id, 'state': current_state},
         {
@@ -165,14 +254,12 @@ def batch_failure(
                     'debugInfo': debug_info,
                     'node': new_node,
                     'ccagent': ccagent,
-                    'dockerStats': docker_stats
+                    # 'dockerStats': docker_stats
                 }
             }
         }
     )
 
 
-def str_to_bool(s):
-    if isinstance(s, str) and s.lower() in ['1', 'true']:
-        return True
-    return False
+class BatchNotFoundException(Exception):
+    pass

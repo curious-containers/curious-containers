@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "cc-agency"
-version = "8.1.2"
+version = "9.0.0"
 authors = ["Christoph Jansen <Christoph.Jansen@htw-berlin.de>", "Bruno Schilling <Bruno.Schilling@student.htw-berlin.de>"]
 license = "AGPL-3.0"
 readme = "README.md"
@@ -14,7 +14,7 @@ flask = "^1.0"
 pyzmq = "^17.0"
 pymongo = "^3.7"
 cryptography = "^2.2"
-cc-core = "~8.1"
+cc-core = "~9.0"
 
 [tool.poetry.dev-dependencies]
 

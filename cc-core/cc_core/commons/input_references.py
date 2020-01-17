@@ -1,5 +1,5 @@
-from cc_core.commons.exceptions import InvalidInputReference, ParsingError
-from cc_core.commons.parsing import split_into_parts, split_into_parts_with_separators
+from cc_core.commons.exceptions import InvalidInputReference
+from red_val.parsing import split_into_parts, split_into_parts_with_separators, ParsingError
 
 ATTRIBUTE_WRAPPING_SYMBOLS = [('["', '"]'), ('[\'', '\']')]
 ATTRIBUTE_SEPARATOR_SYMBOL = '.'

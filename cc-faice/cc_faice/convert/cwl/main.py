@@ -1,11 +1,8 @@
 from argparse import ArgumentParser
 
-from jsonschema import validate
-from jsonschema.exceptions import ValidationError
-
-from cc_core.commons.exceptions import AgentError, print_exception, exception_format, RedSpecificationError
+from cc_core.commons.exceptions import AgentError, print_exception, exception_format
 from cc_core.commons.files import dump_print, load_and_read
-
+from red_val.exceptions import RedSpecificationError
 
 DESCRIPTION = 'Read cli section of a REDFILE and write it to stdout in the specified format.'
 

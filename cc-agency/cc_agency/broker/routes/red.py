@@ -2,20 +2,24 @@ import json
 from time import time
 
 from flask import request
+from red_val.red_validation import red_validation
+from red_val.red_variables import get_variable_keys
 from werkzeug.exceptions import BadRequest, NotFound, InternalServerError
 from bson.objectid import ObjectId
 
-from cc_core.commons.red import red_validation
 from cc_core.commons.engines import engine_validation
-from cc_core.commons.templates import get_template_keys, get_secret_values, normalize_keys
+from cc_core.commons.red_secrets import get_secret_values, normalize_keys
 from cc_core.commons.exceptions import exception_format
-from cc_core.commons.red_to_blue import convert_red_to_blue
+from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red
 
-from cc_agency.commons.helper import str_to_bool, create_flask_response
+from cc_agency.commons.helper import str_to_bool, create_flask_response, USER_SPECIFIED_STDOUT_KEY, \
+    USER_SPECIFIED_STDERR_KEY, get_gridfs_filename, create_file_flask_response, STDOUT_FILE_KEY, STDERR_FILE_KEY
 from cc_agency.commons.secrets import separate_secrets_batch, separate_secrets_experiment
+from cc_agency.commons.db import Mongo
+from cc_agency.broker.auth import Auth
 
 
-def _prepare_red_data(data, user):
+def _prepare_red_data(data, user, disable_retry):
     timestamp = time()
 
     experiment = {
@@ -30,11 +34,15 @@ def _prepare_red_data(data, user):
     if 'execution' in data:
         stripped_settings = {}
 
+        # add settings to experiment
         for key, val in data['execution']['settings'].items():
             if key == 'access':
                 continue
 
             stripped_settings[key] = val
+
+        # add retry if failed to experiment settings
+        stripped_settings['retryIfFailed'] = not disable_retry
 
         experiment['execution'] = {
             'engine': data['execution']['engine'],
@@ -72,7 +80,11 @@ def _prepare_red_data(data, user):
             }],
             'attempts': 0,
             'inputs': rb['inputs'],
-            'outputs': rb['outputs']
+            'outputs': rb['outputs'],
+            USER_SPECIFIED_STDOUT_KEY: False,
+            USER_SPECIFIED_STDERR_KEY: False,
+            STDOUT_FILE_KEY: None,
+            STDERR_FILE_KEY: None
         }
         batch, additional_secrets = separate_secrets_batch(batch)
         secrets.update(additional_secrets)
@@ -87,7 +99,9 @@ def red_routes(app, mongo, auth, controller, trustee_client):
 
     :param app: The flask app to attach to
     :param mongo: The mongo client
+    :type mongo: Mongo
     :param auth: The authorization module to use
+    :type auth: Auth
     :param controller: The controller to communicate with the scheduler
     :param trustee_client: The trustee client
     """
@@ -115,6 +129,7 @@ def red_routes(app, mongo, auth, controller, trustee_client):
             raise BadRequest('Did not send RED data as JSON.')
 
         data = request.json
+        disable_retry = str_to_bool(request.args.get('disableRetry', default=False))
 
         try:
             red_validation(data, False)
@@ -124,8 +139,7 @@ def red_routes(app, mongo, auth, controller, trustee_client):
                 .format(str(e))
             )
 
-        template_keys = set()
-        get_template_keys(data, template_keys)
+        template_keys = get_variable_keys(data)
         if template_keys:
             raise BadRequest(
                 'The given red data contains the following variables: "{}". Please resolve them before submitting'
@@ -155,11 +169,11 @@ def red_routes(app, mongo, auth, controller, trustee_client):
         try:
             engine_validation(data, 'execution', ['ccagency'], optional=True)
             normalize_keys(data)
-            _ = convert_red_to_blue(data)
+            _ = convert_red_to_restricted_red(data)
         except Exception:
             raise BadRequest('\n'.join(exception_format(secret_values=secret_values)))
 
-        experiment, batches, secrets = _prepare_red_data(data, user)
+        experiment, batches, secrets = _prepare_red_data(data, user, disable_retry)
 
         response = trustee_client.store(secrets)
         if response['state'] == 'failed':
@@ -245,6 +259,35 @@ def red_routes(app, mongo, auth, controller, trustee_client):
     @app.route('/batches/<object_id>', methods=['GET'])
     def get_batches_id(object_id):
         return get_collection_id('batches', object_id)
+
+    @app.route('/batches/<batch_id>/<filename>', methods=['GET'])
+    def get_batches_id_file(batch_id, filename):
+        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
+
+        try:
+            bson_id = ObjectId(batch_id)
+        except Exception:
+            raise BadRequest('Not a valid batch ID.')
+
+        match = {'_id': bson_id}
+
+        if not user.is_admin:
+            match['username'] = user.username
+
+        o = mongo.db['batches'].find_one(match)
+        if not o:
+            raise NotFound('Could not find batch with id "{}".'.format(batch_id))
+
+        if filename not in ('stdout', 'stderr'):
+            raise BadRequest('Could not transfer "{}". Use "stdout" or "stderr" as filename.'.format(filename))
+
+        db_filename = get_gridfs_filename(batch_id, filename)
+
+        data = mongo.get_file(db_filename)
+        if data is None:
+            raise NotFound('Could not find "{}" of batch "{}"'.format(filename, batch_id))
+
+        return create_file_flask_response(data, auth, user.authentication_cookie)
 
     def get_collection_id(collection, object_id):
         user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)

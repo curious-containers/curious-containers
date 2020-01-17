@@ -1,6 +1,3 @@
-from cc_core.commons.schemas import PATTERN_KEY
-
-
 URL_SCHEME_IDENTIFIER = 'path'
 
 CWL_INPUT_TYPES = ['File', 'Directory', 'string', 'int', 'long', 'float', 'double', 'boolean']
@@ -9,6 +6,8 @@ CWL_INPUT_TYPES += ['{}?'.format(t) for t in CWL_INPUT_TYPES[:]]
 
 CWL_OUTPUT_TYPES = ['File', 'Directory']
 CWL_OUTPUT_TYPES += ['{}?'.format(t) for t in CWL_OUTPUT_TYPES[:]]
+
+PATTERN_KEY = '^[a-zA-Z0-9_-]+$'
 
 
 cli_schema = {
@@ -19,6 +18,7 @@ cli_schema = {
         'baseCommand': {
             'oneOf': [
                 {'type': 'string'},
+                {'type': 'null'},
                 {
                     'type': 'array',
                     'items': {'type': 'string'}
@@ -85,5 +85,5 @@ cli_schema = {
         'doc': {'type': 'string'}
     },
     'additionalProperties': False,
-    'required': ['cwlVersion', 'class', 'baseCommand', 'inputs', 'outputs']
+    'required': ['cwlVersion', 'class', 'inputs', 'outputs']
 }

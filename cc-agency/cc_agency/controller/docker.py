@@ -7,8 +7,10 @@ import concurrent.futures
 import time
 from traceback import format_exc
 from typing import List, Tuple, Dict
+from tarfile import StreamError
 
 import docker
+from cc_core.commons.exceptions import log_format_exception
 from docker.errors import DockerException, APIError
 from docker.models.containers import Container
 from docker.models.images import Image
@@ -25,10 +27,11 @@ from cc_agency.commons.schemas.callback import agent_result_schema
 from cc_agency.commons.secrets import get_experiment_secret_keys, fill_experiment_secrets, fill_batch_secrets, \
     get_batch_secret_keys, TrusteeClient
 from cc_core.commons.docker_utils import create_container_with_gpus, create_batch_archive, image_to_str, \
-    detect_nvidia_docker_gpus
-from cc_core.commons.red_to_blue import convert_red_to_blue, CONTAINER_OUTPUT_DIR, CONTAINER_AGENT_PATH, \
-    CONTAINER_BLUE_FILE_PATH
-from cc_agency.commons.helper import batch_failure
+    detect_nvidia_docker_gpus, retrieve_file_archive, get_first_tarfile_member
+from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR, \
+    CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH
+from cc_agency.commons.helper import batch_failure, USER_SPECIFIED_STDOUT_KEY, USER_SPECIFIED_STDERR_KEY, \
+    get_gridfs_filename, STDERR_FILE_KEY, STDOUT_FILE_KEY
 
 INSPECTION_IMAGE = 'docker.io/busybox:latest'
 NVIDIA_INSPECTION_IMAGE = 'nvidia/cuda:8.0-runtime'
@@ -82,7 +85,7 @@ def _pull_image(docker_client, image_url, auth, depending_batches):
     try:
         docker_client.images.pull(image_url, auth_config=auth)
     except Exception as e:
-        debug_info = str(e).split('\n')
+        debug_info = log_format_exception(e).split('\n')
         return ImagePullResult(image_url, auth, False, debug_info, depending_batches)
 
     return ImagePullResult(image_url, auth, True, None, depending_batches)
@@ -204,7 +207,9 @@ class ClientProxy:
         self._check_for_batches_event = Event()  # type: Event
         self._check_exited_containers_event = Event()  # type: Event
 
-        if not self._init_docker_client():
+        if self._init_docker_client():
+            self._remove_old_containers()
+        else:
             self.do_inspect()
             self._set_offline(format_exc())
 
@@ -215,6 +220,24 @@ class ClientProxy:
         # initialize Executor Pools
         self._pull_executor = concurrent.futures.ThreadPoolExecutor(max_workers=ClientProxy.NUM_WORKERS)
         self._run_executor = concurrent.futures.ThreadPoolExecutor(max_workers=ClientProxy.NUM_WORKERS)
+
+    def _remove_old_containers(self):
+        """
+        Only execute this function at the start.
+        This function removes all batch containers in state created.
+        """
+        try:
+            for batch_id, container in self._batch_containers('created').items():
+                container.stop()
+                container.remove()
+
+                self._run_batch_container_failure(
+                    batch_id,
+                    'agency was restarted during processing of this batch and the batch could not be started correctly.',
+                    'created'
+                )
+        except Exception as e:
+            self._log('Error while removing old containers', e)
 
     def get_gpus(self):
         return self._gpus
@@ -250,7 +273,7 @@ class ClientProxy:
         self._online.set()  # start _check_batch_containers and _check_exited_containers
 
     def _set_offline(self, debug_info):
-        print('Node offline:', self._node_name)
+        self._log('Node offline: {}'.format(self._node_name))
 
         self._online.clear()
 
@@ -293,14 +316,18 @@ class ClientProxy:
         return ram, cpus, runtimes
 
     @staticmethod
-    def _log(message):
+    def _log(message, e=None):
         """
         Logs a message by printing it to make it visible to journalctl.
 
         :param message: The message to print
         :type message: str
+        :param e: The exception to print
+        :type e: Exception
         """
         print(message, file=sys.stderr)
+        if e is not None:
+            print(log_format_exception(e), file=sys.stderr)
 
     def _batch_containers(self, status):
         """
@@ -325,10 +352,16 @@ class ClientProxy:
             filters = None
 
         try:
-            containers = self._client.containers.list(all=True, limit=-1, filters=filters)  # type: List[Container]
+            containers = self._client.containers.list(
+                all=True,
+                limit=-1,
+                filters=filters,
+                ignore_removed=True  # to ignore failures due to parallel removed containers
+            )  # type: List[Container]
         except (ConnectionError, ReadTimeout) as e:
             raise DockerException(
-                'Could not list current containers. Failed with the following message:\n{}'.format(str(e))
+                'Could not list current containers. Failed with the following message:\n{}'
+                .format(log_format_exception(e))
             )
 
         for c in containers:
@@ -391,7 +424,10 @@ class ClientProxy:
             )
             info = self._info()
         except (DockerException, ConnectionError) as e:
-            return False, str(e)
+            return False, log_format_exception(e)
+        except Exception as e:
+            self._log('Failed to inspect docker client for "{}":'.format(self._node_name), e)
+            return False, log_format_exception(e)
 
         return True, info
 
@@ -425,9 +461,13 @@ class ClientProxy:
                     self._set_online(ram, cpus)
                     init_succeeded = True
                     self._printed_failed_docker_client_init = False
+            else:
+                if not self._printed_failed_docker_client_init:
+                    self._log('Failed to init docker client for "{}":\n{}'.format(self._node_name, state))
+                    self._printed_failed_docker_client_init = True
         except (DockerException, ConnectionError) as e:
             if not self._printed_failed_docker_client_init:
-                self._log('Failed to init docker client:\n{}'.format(repr(e)))
+                self._log('Failed to init docker client "{}" with exception:'.format(self._node_name), e)
                 self._printed_failed_docker_client_init = True
         return init_succeeded
 
@@ -449,7 +489,7 @@ class ClientProxy:
         except DockerException:
             pass  # If this fails, no gpus are assumed
         except ConnectionError as e:
-            self._log('GPU Detection failed.\n{}'.format(repr(e)))
+            self._log('GPU Detection failed:', e)
             self.do_inspect()
 
     def _inspection_loop(self):
@@ -462,14 +502,17 @@ class ClientProxy:
         If this client proxy is offline, tries to restart it.
         """
         while True:
-            if self.is_online():
-                self._inspection_event.wait()
-                self._inspection_event.clear()
-                self._inspect_on_error()
-            else:
-                self._inspection_event.wait(timeout=OFFLINE_INSPECTION_INTERVAL)
-                self._inspection_event.clear()
-                self._init_docker_client()  # tries to reinitialize the docker client
+            try:
+                if self.is_online():
+                    self._inspection_event.wait()
+                    self._inspection_event.clear()
+                    self._inspect_on_error()
+                else:
+                    self._inspection_event.wait(timeout=OFFLINE_INSPECTION_INTERVAL)
+                    self._inspection_event.clear()
+                    self._init_docker_client()  # tries to reinitialize the docker client
+            except Exception as e:
+                self._log('Error while inspecting:', e)
 
     def _check_exited_containers(self):
         """
@@ -490,7 +533,7 @@ class ClientProxy:
 
         batch_cursor = self._mongo.db['batches'].find(
             {'_id': {'$in': [ObjectId(_id) for _id in exited_containers]}},
-            {'state': 1}
+            {'state': 1, STDOUT_FILE_KEY: 1, STDERR_FILE_KEY: 1}
         )
         resources_freed = False
         for batch in batch_cursor:
@@ -524,12 +567,18 @@ class ClientProxy:
                 if resources_freed:
                     self._scheduling_event.set()
             except (DockerException, ConnectionError) as e:
-                self._log('Error while checking exited containers:\n{}'.format(repr(e)))
+                self._log('Error while checking exited containers:', e)
                 self.do_inspect()
+            except Exception as e:
+                self._log('Error while checking exited containers:', e)
 
     def _check_exited_container(self, container, batch):
         """
         Inspects the logs of the given exited container and updates the database accordingly.
+
+        Also handles stdout/stderr:
+        - If the batch failed, stdout/stderr are copied into the mongo GridFS
+        - If the experiment explicitly specified stdout/stderr they are also copied into the mongo GridFS
 
         :param container: The container to inspect
         :type container: Container
@@ -539,14 +588,17 @@ class ClientProxy:
         bson_batch_id = batch['_id']
         batch_id = str(bson_batch_id)
 
+        gridfs_stdout_filename = get_gridfs_filename(batch_id, 'stdout')
+        gridfs_stderr_filename = get_gridfs_filename(batch_id, 'stderr')
+
         try:
             stdout_logs = container.logs(stderr=False).decode('utf-8')
             stderr_logs = container.logs(stdout=False).decode('utf-8')
+
             docker_stats = container.stats(stream=False)
         except Exception as e:
-            err_str = repr(e)
-            self._log('Failed to get container logs:\n{}'.format(err_str))
-            debug_info = 'Could not get logs or stats of container: {}'.format(err_str)
+            self._log('Failed to get container logs:', e)
+            debug_info = 'Could not get logs or stats of container: {}'.format(log_format_exception(e))
             batch_failure(self._mongo, batch_id, debug_info, None, batch['state'])
             return
 
@@ -554,34 +606,83 @@ class ClientProxy:
         try:
             data = json.loads(stdout_logs)
         except json.JSONDecodeError as e:
-            err_str = repr(e)
-            debug_info = 'CC-Agent data is not a valid json object: {}\n\nstdout was:\n{}'.format(err_str, stdout_logs)
+            debug_info = 'stdout of agent is not a valid json object: {}\nstdout of agent was:\n{}'\
+                         .format(log_format_exception(e), stdout_logs)
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
-            self._log('Failed to load json from blue agent:\n{}'.format(err_str))
+            self._log('Failed to load json from restricted red agent:', e)
             return
+
+        container_stdout_path = None
+        if STDOUT_FILE_KEY in batch:
+            container_stdout_path = CONTAINER_OUTPUT_DIR.joinpath(batch.get(STDOUT_FILE_KEY))
+
+        container_stderr_path = None
+        if STDERR_FILE_KEY in batch:
+            container_stderr_path = CONTAINER_OUTPUT_DIR.joinpath(batch.get(STDERR_FILE_KEY))
+
+        def write_stdout_stderr_to_gridfs(include_stdout=True, include_stderr=True):
+            """
+            Helper function to write the stdout/stderr files of the docker container into mongo gridfs.
+
+            :return: A list of strings describing the errors that occurred during transferring the files.
+            :rtype: list[str]
+            """
+            errors = []
+            if include_stdout and container_stdout_path is not None:
+                try:
+                    archive_stdout = retrieve_file_archive(container, container_stdout_path)
+                    with get_first_tarfile_member(archive_stdout) as file_stdout:
+                        self._mongo.write_file_from_file(gridfs_stdout_filename, file_stdout)
+                except (DockerException, ValueError, StreamError) as ex:
+                    errors.append(
+                        'Failed to create stdout for batch {}. Failed with the following message:\n{}'
+                        .format(batch_id, log_format_exception(ex))
+                    )
+
+            if include_stderr and container_stderr_path is not None:
+                try:
+                    archive_stderr = retrieve_file_archive(container, container_stderr_path)
+                    with get_first_tarfile_member(archive_stderr) as file_stderr:
+                        self._mongo.write_file_from_file(gridfs_stderr_filename, file_stderr)
+                except (DockerException, ValueError, StreamError) as ex:
+                    errors.append(
+                        'Failed to create stderr for batch {}. Failed with the following message:\n{}'
+                        .format(batch_id, log_format_exception(ex))
+                    )
+
+            return errors
 
         try:
             jsonschema.validate(data, agent_result_schema)
         except jsonschema.ValidationError as e:
-            err_str = repr(e)
-            debug_info = 'CC-Agent data sent by callback does not comply with jsonschema: {}'.format(err_str)
+            write_stdout_stderr_to_gridfs()
+            debug_info = 'CC-Agent data sent by callback does not comply with jsonschema:\n{}'\
+                         .format(log_format_exception(e))
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
-            self._log('Failed to validate blue agent output:\n{}'.format(err_str))
+            self._log('Failed to validate restricted_red agent output:', e)
             return
 
         if data['state'] == 'failed':
+            write_stdout_stderr_to_gridfs()
             debug_info = 'Batch failed.\nContainer stderr:\n{}\ndebug info:\n{}'.format(stderr_logs, data['debugInfo'])
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
             return
 
         batch = self._mongo.db['batches'].find_one(
             {'_id': bson_batch_id},
-            {'attempts': 1, 'node': 1, 'state': 1}
+            {'attempts': 1, 'node': 1, 'state': 1, USER_SPECIFIED_STDOUT_KEY: 1, USER_SPECIFIED_STDERR_KEY: 1}
         )
         if batch['state'] != 'processing':
+            write_stdout_stderr_to_gridfs()
             debug_info = 'Batch failed.\nExited container, but not in state processing.'
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
             return
+
+        # from here it is expected that the batch was successful
+        debug_info = write_stdout_stderr_to_gridfs(
+            include_stdout=batch[USER_SPECIFIED_STDOUT_KEY],
+            include_stderr=batch[USER_SPECIFIED_STDERR_KEY]
+        )
 
         self._mongo.db['batches'].update_one(
             {
@@ -596,7 +697,7 @@ class ClientProxy:
                     'history': {
                         'state': 'succeeded',
                         'time': time.time(),
-                        'debugInfo': None,
+                        'debugInfo': debug_info or None,
                         'node': batch['node'],
                         'ccagent': data,
                         'dockerStats': docker_stats
@@ -638,10 +739,15 @@ class ClientProxy:
                 self._check_for_batches()
             except TrusteeServiceError as e:
                 self.do_inspect()
-                self._log('TrusteeService unavailable while checking for batches:\n{}'.format(repr(e)))
+                self._log('TrusteeService unavailable while checking for batches:', e)
                 continue
+            except Exception as e:
+                self._log('Error while checking for batches:', e)
 
-            self._prune_docker_images()
+            try:
+                self._prune_docker_images()
+            except Exception as e:
+                self._log('Error while removing old docker images:', e)
 
     def _get_images_with_last_registration_time(self):
         """
@@ -665,7 +771,7 @@ class ClientProxy:
                 continue
             except ConnectionError as e:
                 self.do_inspect()
-                self._log('Failed to get image "{}" with registration time:\n{}'.format(image_url, repr(e)))
+                self._log('Failed to get image "{}" with registration time:'.format(image_url), e)
                 continue
 
             latest_experiment = self._mongo.db.experiments.find_one(
@@ -707,7 +813,7 @@ class ClientProxy:
                     continue  # if image is used by other images
                 except ConnectionError as e:
                     self.do_inspect()
-                    self._log('Failed to remove image:\n{}'.format(repr(e)))
+                    self._log('Failed to remove image:', e)
                     break
                 print('removed image {}'.format(image_to_str(image)))
 
@@ -860,8 +966,9 @@ class ClientProxy:
         try:
             self._run_batch_container(batch, experiment)
         except Exception as e:
+            self._log('Error while running batch container:', e)
             batch_id = str(batch['_id'])
-            self._run_batch_container_failure(batch_id, str(e), batch['state'])
+            self._run_batch_container_failure(batch_id, log_format_exception(e), batch['state'])
 
     def _run_batch_container(self, batch, experiment):
         """
@@ -908,8 +1015,8 @@ class ClientProxy:
         - Collects all arguments for the docker container execution
         - Removes old containers with the same name
         - Creates the docker container with the collected arguments
-        - Creates an archive containing the blue_agent and the blue_file of this batch and copies this archive into the
-          container
+        - Creates an archive containing the restricted_red_agent and the restricted_red_file of this batch and copies
+          this archive into the container
         - Starts the container
 
         :param batch: The batch to run inside the container
@@ -941,10 +1048,9 @@ class ClientProxy:
 
         command = [
             'python3',
-            CONTAINER_AGENT_PATH,
+            CONTAINER_AGENT_PATH.as_posix(),
             '--outputs',
-            '--debug',
-            CONTAINER_BLUE_FILE_PATH
+            CONTAINER_RESTRICTED_RED_FILE_PATH.as_posix()
         ]
 
         ram = experiment['container']['settings']['ram']
@@ -964,14 +1070,14 @@ class ClientProxy:
         if existing_container is not None:
             existing_container.remove(force=True)
 
+        # the user argument is not set to use the user specified by the docker image
         container = create_container_with_gpus(
             client=self._client,
             image=image,
             command=command,
             available_runtimes=self._runtimes,
             name=batch_id,
-            user='1000:1000',
-            working_dir=CONTAINER_OUTPUT_DIR,
+            working_dir=CONTAINER_OUTPUT_DIR.as_posix(),
             detach=True,
             mem_limit=mem_limit,
             memswap_limit=mem_limit,
@@ -984,22 +1090,22 @@ class ClientProxy:
             ulimits=ulimits
         )  # type: Container
 
-        # copy blue agent and blue file to container
+        # copy restricted_red agent and restricted_red file to container
         with self._create_batch_archive(batch) as tar_archive:
             container.put_archive('/', tar_archive)
 
         container.start()
 
-    def _create_blue_batch(self, batch):
+    def _create_restricted_red_batch(self, batch):
         """
-        Creates a dictionary containing the data for a blue batch.
+        Creates a dictionary containing the data for a restricted_red batch.
 
         :param batch: The batch description
         :type batch: dict
-        :return: A dictionary containing a blue batch
+        :return: A dictionary containing a restricted_red batch
         :rtype: dict
         :raise TrusteeServiceError: If the trustee service is unavailable or unable to collect the requested secret keys
-        :raise ValueError: If there was more than one blue batch after red_to_blue
+        :raise ValueError: If there was more than one restricted_red batch after red_to_restricted_red
         """
         batch_id = str(batch['_id'])
         batch_secret_keys = get_batch_secret_keys(batch)
@@ -1034,32 +1140,52 @@ class ClientProxy:
             'outputs': batch['outputs']
         }
 
-        blue_batches = convert_red_to_blue(red_data)
+        restricted_red_batches = convert_red_to_restricted_red(red_data)
 
-        if len(blue_batches) != 1:
-            raise ValueError('Got {} batches, but only one was asserted.'.format(len(blue_batches)))
+        if len(restricted_red_batches) != 1:
+            raise ValueError('Got {} batches, but only one was asserted.'.format(len(restricted_red_batches)))
 
-        return blue_batches[0]
+        restricted_red_batch = restricted_red_batches[0]
+
+        # update stdout/stderr metadata
+        self._mongo.db['batches'].update_one(
+            {
+                '_id': ObjectId(batch_id)
+            },
+            {
+                '$set': {
+                    USER_SPECIFIED_STDOUT_KEY: restricted_red_batch.stdout_specified_by_user(),
+                    USER_SPECIFIED_STDERR_KEY: restricted_red_batch.stderr_specified_by_user(),
+                    STDOUT_FILE_KEY: restricted_red_batch.data['cli']['stdout'],
+                    STDERR_FILE_KEY: restricted_red_batch.data['cli']['stderr']
+                },
+            }
+        )
+
+        return restricted_red_batch.data
 
     def _create_batch_archive(self, batch):
         """
-        Creates a tar archive to put into the docker container for the blue agent execution.
-        The blue data is extracted from the given batch.
+        Creates a tar archive to put into the docker container for the restricted_red agent execution.
+        The restricted_red data is extracted from the given batch.
 
-        :param batch: The data to put into the blue file of the returned archive
+        :param batch: The data to put into the restricted_red file of the returned archive
         :type batch: dict
-        :return: A tar archive containing the blue agent and the given blue batch
+        :return: A tar archive containing the restricted_red agent and the given restricted_red batch
         :rtype: io.BytesIO or bytes
         """
-        blue_data = self._create_blue_batch(batch)
+        restricted_red_data = self._create_restricted_red_batch(batch)
 
-        return create_batch_archive(blue_data)
+        return create_batch_archive(restricted_red_data)
 
     def _run_batch_container_failure(self, batch_id, debug_info, current_state):
-        batch_failure(self._mongo, batch_id, debug_info, None, current_state)
+        try:
+            batch_failure(self._mongo, batch_id, debug_info, None, current_state)
+        except Exception as e:
+            self._log('Error while handling batch failure:', e)
 
     def _pull_image_failure(self, debug_info, batch_id, current_state):
-        batch_failure(self._mongo, batch_id, debug_info, None, current_state)
+        self._run_batch_container_failure(batch_id, debug_info, current_state)
 
     def _has_nvidia_gpus(self):
         """

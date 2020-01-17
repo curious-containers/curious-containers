@@ -2,9 +2,10 @@ import io
 import json
 import stat
 import tarfile
-from typing import List
+from pathlib import PurePosixPath, Path
 
 import docker
+from cc_core.commons.exceptions import AgentError
 from cc_core.commons.gpu_info import GPUDevice, NVIDIA_GPU_VENDOR
 from docker.errors import DockerException
 from requests.exceptions import ConnectionError
@@ -13,8 +14,8 @@ from docker.models.containers import Container, _create_container_args
 from docker.models.images import Image
 
 from cc_core.commons.engines import NVIDIA_DOCKER_RUNTIME
-from cc_core.commons.red_to_blue import CONTAINER_AGENT_PATH, CONTAINER_BLUE_FILE_PATH, CONTAINER_OUTPUT_DIR, \
-    CONTAINER_INPUT_DIR
+from cc_core.commons.red_to_restricted_red import CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH,\
+    CONTAINER_OUTPUT_DIR, CONTAINER_INPUT_DIR
 
 GPU_CAPABILITIES = [['gpu'], ['nvidia'], ['compute'], ['compat32'], ['graphics'], ['utility'], ['video'], ['display']]
 GPU_QUERY_IMAGE = 'nvidia/cuda:8.0-runtime'
@@ -42,7 +43,7 @@ def create_container_with_gpus(client, image, command, available_runtimes, gpus=
                  - An int representing the number of gpus to use
                  - a list of device ids or uuids
                  - None to not use gpus
-    :type gpus: str or int or List[str or int]
+    :type gpus: str or int or list[str or int]
     :param environment: The environment of this docker container
     :type environment: dict
     :param kwargs: The same arguments as in docker.DockerClient.containers.create(kwargs)
@@ -90,7 +91,7 @@ def _create_with_nvidia_container_toolkit(client, image, command, gpus, kwargs):
                  - The string 'all' to use all available gpus
                  - An int representing the number of gpus to use
                  - a list of device ids or uuids
-    :type gpus: str or int or List[str or int]
+    :type gpus: str or int or list[str or int]
     :param kwargs: The kwargs of the docker.DockerClient.containers.create() function
     """
     # start addition
@@ -116,7 +117,7 @@ def _create_with_nvidia_container_toolkit(client, image, command, gpus, kwargs):
 def _get_gpu_device_request(gpus):
     """
     :param gpus: The string 'all', an int representing the number of gpus to use or a list of device ids
-    :type gpus: str or int or List[str]
+    :type gpus: str or int or list[str]
     """
     if gpus == 'all':
         return {
@@ -149,7 +150,7 @@ def _get_nvidia_visible_devices_from_gpus(gpus):
     Returns the value for the NVIDIA_VISIBLE_DEVICES environment variable.
 
     :param gpus: The string 'all', an int representing the number of gpus to use or a list of device ids
-    :type gpus: str or int or List[str]
+    :type gpus: str or int or list[str]
     :return: The value for the NVIDIA_VISIBLE_DEVICES environment variable
     :rtype: str
 
@@ -190,22 +191,26 @@ def set_permissions_and_owner(tarinfo, permissions, uid=0, username='root'):
 def create_batch_archive(restricted_red_data):
     """
     Creates a tar archive that can be put into a cc_core container to execute the restricted red agent.
+
     This archive contains the restricted red agent, a restricted red file, the outputs-directory and the
     inputs-directory.
     The restricted red file is filled with the given restricted red data.
     The outputs-directory is an empty directory, with name 'outputs'
     The inputs-directory is an empty directory, with name 'inputs'
     The tar archive and the restricted red file are always in memory and never stored on the host filesystem.
+
     All files and directories are owned by root.
     The restricted red agent has read and execution permissions for others.
     The restricted red file has read permissions set for others.
     The directories outputs and inputs have read, write and execute permissions set for others.
+
     The resulting archive is:
     /cc
     |-- /restricted_red_agent.py
     |-- /restricted_red_file.json
     |-- /outputs/
     |-- /inputs/
+
     :param restricted_red_data: The data to put into the restricted red file of the returned archive
     :type restricted_red_data: dict
     :return: A tar archive containing the restricted red agent, a restricted red file, and input/output directories
@@ -216,17 +221,17 @@ def create_batch_archive(restricted_red_data):
 
     # add restricted red agent
     agent_tarinfo = tar_file.gettarinfo(
-        str(get_blue_agent_host_path()),
-        arcname=CONTAINER_AGENT_PATH
+        str(get_restricted_red_agent_host_path()),
+        arcname=CONTAINER_AGENT_PATH.as_posix()
     )
     set_permissions_and_owner(agent_tarinfo, stat.S_IROTH | stat.S_IXOTH)
-    with open(get_blue_agent_host_path(), 'rb') as agent_file:
+    with get_restricted_red_agent_host_path().open('rb') as agent_file:
         tar_file.addfile(agent_tarinfo, agent_file)
 
     # add restricted red file
     restricted_red_batch_content = json.dumps(restricted_red_data).encode('utf-8')
     # see https://bugs.python.org/issue22208 for more information
-    restricted_red_batch_tarinfo = tarfile.TarInfo(CONTAINER_BLUE_FILE_PATH)
+    restricted_red_batch_tarinfo = tarfile.TarInfo(CONTAINER_RESTRICTED_RED_FILE_PATH.as_posix())
     restricted_red_batch_tarinfo.size = len(restricted_red_batch_content)
     set_permissions_and_owner(restricted_red_batch_tarinfo, stat.S_IROTH)
     tar_file.addfile(restricted_red_batch_tarinfo, io.BytesIO(restricted_red_batch_content))
@@ -249,8 +254,9 @@ def create_batch_archive(restricted_red_data):
 def create_directory_tarinfo(directory_name, permissions, owner_id=0, owner_name='root'):
     """
     Creates a tarfile.TarInfo object, that represents a directory with the given directory name.
+
     :param directory_name: The name of the directory represented by the created TarInfo
-    :type directory_name: str
+    :type directory_name: PurePosixPath
     :param permissions: The permission bits for the directory
     :param owner_id: The id of the owner of the directory
     :type owner_id: int
@@ -259,21 +265,21 @@ def create_directory_tarinfo(directory_name, permissions, owner_id=0, owner_name
     :return: A TarInfo object representing a directory with the given name
     :rtype: tarfile.TarInfo
     """
-    directory_tarinfo = tarfile.TarInfo(directory_name)
+    directory_tarinfo = tarfile.TarInfo(directory_name.as_posix())
     directory_tarinfo.type = tarfile.DIRTYPE
     set_permissions_and_owner(directory_tarinfo, permissions, owner_id, owner_name)
     return directory_tarinfo
 
 
-def get_blue_agent_host_path():
+def get_restricted_red_agent_host_path():
     """
-    Returns the path of the blue agent in the host machine.
+    Returns the path of the restricted red agent in the host machine.
 
-    :return: The path to the blue agent
-    :rtype: str
+    :return: The path to the restricted red agent
+    :rtype: Path
     """
-    import cc_core.agent.blue.__main__ as blue_main
-    return blue_main.__file__
+    import cc_core.agent.restricted_red.__main__ as restricted_red_main
+    return Path(restricted_red_main.__file__)
 
 
 def image_to_str(image):
@@ -301,12 +307,12 @@ def detect_nvidia_docker_gpus(client, runtimes):
     :param client: The docker client to use for gpu detection
     :type client: docker.DockerClient
     :param runtimes: The available runtimes for this docker client
-    :type runtimes: List[str]
+    :type runtimes: list[str]
 
     :raise DockerException: If the stdout of the query could not be parsed or if the container execution failed
 
     :return: A list of GPUDevices
-    :rtype: List[GPUDevice]
+    :rtype: list[GPUDevice]
     """
     client.images.pull(GPU_QUERY_IMAGE)
 
@@ -317,6 +323,7 @@ def detect_nvidia_docker_gpus(client, runtimes):
         '--format=csv,noheader,nounits'
     ]
 
+    container = None  # type: Container or None
     try:
         container = create_container_with_gpus(
             client,
@@ -324,12 +331,19 @@ def detect_nvidia_docker_gpus(client, runtimes):
             command=command,
             available_runtimes=runtimes,
             gpus='all'
-        )  # type: Container
+        )
         container.start()
         container.wait()
         stdout = container.logs(stdout=True, stderr=False, stream=False)
         container.remove()
     except DockerException as e:
+        # noinspection PyBroadException
+        try:
+            if container is not None:
+                container.remove()
+        except Exception:
+            # we try to remove the container, but if it doesnt work we are fine
+            pass
         raise DockerException(
             'Could not query gpus. Make sure the nvidia-runtime or nvidia-container-toolkit is configured on '
             'the docker host. Container failed with following message:\n{}'.format(str(e))
@@ -353,3 +367,127 @@ def detect_nvidia_docker_gpus(client, runtimes):
             )
 
     return gpus
+
+
+def retrieve_file_archive(container, container_path):
+    """
+    Retrieves the file given by container_path as TarFile object with only one member.
+
+    :param container: The container to retrieve the file from
+    :type container: Container
+    :param container_path: The path inside the container to retrieve. This should be an absolute path.
+    :type container_path: PurePosixPath
+
+    :return: A TarFile object with the only member being the specified file
+    :rtype: tarfile.TarFile
+
+    :raise AgentError: If the container path does not exists or if the connection to the docker container is
+                       interrupted.
+    """
+    try:
+        bits, _ = container.get_archive(container_path.as_posix())
+    except (DockerException, ConnectionError) as e:
+        raise AgentError(str(e))
+
+    return tarfile.open(fileobj=ContainerFileBitsWrapper(bits), mode='r|*')
+
+
+def get_first_tarfile_member(tar_file):
+    """
+    Returns a file like object of the first member of the given tarfile.
+
+    :param tar_file: The tarfile object to get the first member of
+    :type tar_file: tarfile.TarFile
+
+    :return: A file like object containing the data of the first member in the given tarfile
+
+    :raise AssertionError: If the given tar file does not contain members
+    """
+    member = tar_file.next()
+    if member is None:
+        raise AssertionError('Given tarfile does not contain a member')
+    return tar_file.extractfile(member)
+
+
+# noinspection PyMethodOverriding
+class ContainerFileBitsWrapper(io.RawIOBase):
+    def __init__(self, bits):
+        """
+        Wraps the given bits generator of an docker file tar archive and implements a file-like object, that can be used
+        as fileobject for an TarFile object.
+
+        :param bits: The bits generator to read from
+        """
+        super().__init__()
+        self._bits = bits
+        self._chunk_offset = 0  # the offset of the first bit in the current _chunk, in respect to the hole stream
+        self._chunk = bytes(0)  # The current chunk
+        self._read_offset = 0  # The current read offset in the chunk, in respect to the hole stream
+
+    def _read_next(self):
+        chunk_len = len(self._chunk)
+        self._chunk = next(self._bits)
+        self._chunk_offset += chunk_len
+
+    def _offset_to_global_offset(self, offset):
+        return self._chunk_offset + offset
+
+    def _get_chunk_end(self):
+        return self._chunk_offset + len(self._chunk)
+
+    def read(self, n):
+        """
+        Reads n bytes from the internal buffer and returns them as bytes object.
+
+        :param n: The number of bytes to read
+        :type n: int
+        :return: A bytes object containing n bytes
+        :rtype: bytes
+        """
+        end = self._read_offset + n
+
+        tmp_chunk_offset = self._chunk_offset
+        tmp_chunk = self._chunk
+
+        while end > self._offset_to_global_offset(len(self._chunk)):
+            try:
+                self._read_next()
+            except StopIteration:
+                break
+            tmp_chunk += self._chunk
+
+        result = tmp_chunk[self._read_offset - tmp_chunk_offset:end - tmp_chunk_offset]
+        self._read_offset = end
+        return result
+
+    def tell(self):
+        return self._read_offset
+
+    def write(self, size):
+        raise io.UnsupportedOperation('Can not write to ContainerFileBitsWrapper')
+
+    def close(self):
+        self._bits = None
+        self._chunk = None
+
+    def seek(self, offset):
+        if offset < self._read_offset:
+            if offset < self._chunk_offset:
+                raise ValueError(
+                    'Cannot get bytes from the past.\ncurrent offset={}\nseeked offset={}\nchunk offset={}'
+                    .format(self._read_offset, offset, self._chunk_offset)
+                )
+            else:
+                self._read_offset = offset
+
+        while offset > self._get_chunk_end():
+            try:
+                self._read_next()
+            except StopIteration:
+                break
+
+        self._read_offset = offset
+        return self._read_offset
+
+    def fileno(self):
+        raise OSError('ContainerFileBitsWrapper does not use a underlying file object.')
