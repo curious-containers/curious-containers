@@ -25,6 +25,21 @@ def exception_format(secret_values=None):
     return [_lstrip_quarter(elem.replace('"', '').replace("'", '').rstrip()) for elem in exc_text.split('\n') if elem]
 
 
+def full_class_name(o):
+    """
+    Returns the full qualified name of the class of o.
+
+    :param o: The object whose class name should be returned
+    :return: A str representing the class of o
+    :rtype: str
+    """
+    module = o.__class__.__module__
+    if module is None or module == str.__class__.__module__:
+        return o.__class__.__name__  # Avoid reporting __builtin__
+    else:
+        return module + '.' + o.__class__.__name__
+
+
 def log_format_exception(e):
     """
     Returns a formatted string describing the given error for logging purposes.
@@ -49,7 +64,7 @@ def log_format_exception(e):
             tb.name
         ))
 
-    text_l.append(brief_exception_text(e))
+    text_l.append('[{}]: []'.format(full_class_name(e), str(e)))
     return '\n'.join(text_l)
 
 
