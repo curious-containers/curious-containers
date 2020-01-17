@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "cc-core"
-version = "8.1.1"
+version = "9.0.0"
 authors = ["Christoph Jansen <Christoph.Jansen@htw-berlin.de>", "Bruno Schilling <Bruno.Schilling@student.htw-berlin.de>"]
 license = "AGPL-3.0"
 readme = "README.md"
@@ -11,8 +11,9 @@ description = "CC-Core is part of the Curious Containers project. It contains sh
 [tool.poetry.dependencies]
 python = "^3.5"
 docker = "^4.0"
-jsonschema = "^3.1"
 "ruamel.yaml" = "^0.16.5"
+
+red-val = "~9.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^4.3"

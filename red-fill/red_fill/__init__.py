@@ -1,1 +1,3 @@
-__version__ = '0.1.0'
+from red_fill.version import VERSION
+
+__version__ = VERSION

@@ -2,9 +2,7 @@ import os
 import stat
 import sys
 import json
-import tarfile
 import textwrap
-from pathlib import PurePosixPath
 
 from ruamel.yaml import YAML, YAMLError
 

@@ -2,7 +2,6 @@ import io
 import json
 import stat
 import tarfile
-from typing import List
 from pathlib import PurePosixPath, Path
 
 import docker
@@ -44,7 +43,7 @@ def create_container_with_gpus(client, image, command, available_runtimes, gpus=
                  - An int representing the number of gpus to use
                  - a list of device ids or uuids
                  - None to not use gpus
-    :type gpus: str or int or List[str or int]
+    :type gpus: str or int or list[str or int]
     :param environment: The environment of this docker container
     :type environment: dict
     :param kwargs: The same arguments as in docker.DockerClient.containers.create(kwargs)
@@ -92,7 +91,7 @@ def _create_with_nvidia_container_toolkit(client, image, command, gpus, kwargs):
                  - The string 'all' to use all available gpus
                  - An int representing the number of gpus to use
                  - a list of device ids or uuids
-    :type gpus: str or int or List[str or int]
+    :type gpus: str or int or list[str or int]
     :param kwargs: The kwargs of the docker.DockerClient.containers.create() function
     """
     # start addition
@@ -118,7 +117,7 @@ def _create_with_nvidia_container_toolkit(client, image, command, gpus, kwargs):
 def _get_gpu_device_request(gpus):
     """
     :param gpus: The string 'all', an int representing the number of gpus to use or a list of device ids
-    :type gpus: str or int or List[str]
+    :type gpus: str or int or list[str]
     """
     if gpus == 'all':
         return {
@@ -151,7 +150,7 @@ def _get_nvidia_visible_devices_from_gpus(gpus):
     Returns the value for the NVIDIA_VISIBLE_DEVICES environment variable.
 
     :param gpus: The string 'all', an int representing the number of gpus to use or a list of device ids
-    :type gpus: str or int or List[str]
+    :type gpus: str or int or list[str]
     :return: The value for the NVIDIA_VISIBLE_DEVICES environment variable
     :rtype: str
 
@@ -308,12 +307,12 @@ def detect_nvidia_docker_gpus(client, runtimes):
     :param client: The docker client to use for gpu detection
     :type client: docker.DockerClient
     :param runtimes: The available runtimes for this docker client
-    :type runtimes: List[str]
+    :type runtimes: list[str]
 
     :raise DockerException: If the stdout of the query could not be parsed or if the container execution failed
 
     :return: A list of GPUDevices
-    :rtype: List[GPUDevice]
+    :rtype: list[GPUDevice]
     """
     client.images.pull(GPU_QUERY_IMAGE)
 
@@ -324,7 +323,7 @@ def detect_nvidia_docker_gpus(client, runtimes):
         '--format=csv,noheader,nounits'
     ]
 
-    container = None
+    container = None  # type: Container or None
     try:
         container = create_container_with_gpus(
             client,
@@ -332,7 +331,7 @@ def detect_nvidia_docker_gpus(client, runtimes):
             command=command,
             available_runtimes=runtimes,
             gpus='all'
-        )  # type: Container
+        )
         container.start()
         container.wait()
         stdout = container.logs(stdout=True, stderr=False, stream=False)

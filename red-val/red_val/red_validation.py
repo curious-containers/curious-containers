@@ -4,7 +4,7 @@ import os
 import jsonschema
 from jsonschema import ValidationError
 from red_val.exceptions import RedSpecificationError, RedValidationError, CWLSpecificationError
-from red_val.red_schemas import red_schema
+from red_val.schemas.red import red_schema
 from red_val.red_types import InputType, OutputType
 from red_val.red_variables import get_variable_keys, RedVariableError
 

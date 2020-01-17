@@ -1,1 +1,3 @@
-__version__ = '0.1.0'
+from red_val.version import VERSION
+
+__version__ = VERSION

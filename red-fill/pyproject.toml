@@ -1,11 +1,15 @@
 [tool.poetry]
 name = "red-fill"
-version = "0.1.0"
-description = ""
-authors = ["Bluemi <bruno.schilling@protonmail.ch>"]
+version = "9.0.0"
+authors = ["Christoph Jansen <Christoph.Jansen@htw-berlin.de>", "Bruno Schilling <Bruno.Schilling@student.htw-berlin.de>"]
+license = "LGPL-3.0"
+readme = "README.md"
+repository = "https://github.com/curious-containers/curious-containers"
+homepage = "https://www.curious-containers.cc/"
+description = "RED-fill is part of the Curious Containers project. It provides functionality to resolve template keys for RED clients."
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "^3.5"
 keyring = "^19.2"
 
 [tool.poetry.dev-dependencies]

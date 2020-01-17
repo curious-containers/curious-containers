@@ -1,7 +1,6 @@
-from cc_core.commons.schemas import PATTERN_KEY
-from cc_core.commons.schemas.cli import cli_schema
-from cc_core.commons.schemas.connector import connector_schema
-from cc_core.commons.schemas.engine import engine_schema
+from red_val.schemas.cli import cli_schema, PATTERN_KEY
+from red_val.schemas.connector import connector_schema
+from red_val.schemas.engine import engine_schema
 
 red_schema = {
     'definitions': {
