@@ -126,7 +126,7 @@ red_schema = {
     'oneOf': [{
         'type': 'object',
         'properties': {
-            'redVersion': {'type': 'string'},
+            'redVersion': {'enum': ['9']},
             'cli': {'$ref': '#/definitions/cli'},
             'inputs': {'$ref': '#/definitions/inputs'},
             'outputs': {'$ref': '#/definitions/outputs'},

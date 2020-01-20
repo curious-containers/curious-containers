@@ -43,13 +43,6 @@ def red_validation(red_data, ignore_outputs, container_requirement=False, allow_
             'RED-FILE does not comply with jsonschema:\n\tkey in red file: {}\n\treason: {}'.format(where, e.message)
         )
 
-    # check version number
-    if str(red_data['redVersion']) != RED_VERSION:
-        raise RedValidationError(
-            'RED-File version number does not match version of red-val.\nred-file version: {}\nred-val  version: {}'
-            .format(red_data['redVersion'], RED_VERSION)
-        )
-
     input_cli_job_pairs, output_cli_job_pairs = _create_cli_job_pairs(red_data, ignore_outputs)
 
     # check whether types of job data do fit to cli description
