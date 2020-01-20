@@ -7,7 +7,6 @@ from red_val.exceptions import RedSpecificationError, RedValidationError, CWLSpe
 from red_val.schemas.red import red_schema
 from red_val.red_types import InputType, OutputType
 from red_val.red_variables import get_variable_keys, RedVariableError
-from red_val.version import RED_VERSION
 
 
 def red_validation(red_data, ignore_outputs, container_requirement=False, allow_variables=True):
