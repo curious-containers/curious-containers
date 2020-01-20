@@ -451,7 +451,8 @@ def run_restricted_red_batch(
                 further_errors.retrieve_stdout = errors_handling_stdout_stderr.get('stdout')
                 further_errors.retrieve_stderr = errors_handling_stdout_stderr.get('stderr')
 
-    container.stop()
+    # kill the /bin/sh container
+    container.kill()
 
     if not leave_container:
         container.remove()
