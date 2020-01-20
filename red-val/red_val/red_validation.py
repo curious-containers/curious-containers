@@ -7,6 +7,7 @@ from red_val.exceptions import RedSpecificationError, RedValidationError, CWLSpe
 from red_val.schemas.red import red_schema
 from red_val.red_types import InputType, OutputType
 from red_val.red_variables import get_variable_keys, RedVariableError
+from red_val.version import RED_VERSION
 
 
 def red_validation(red_data, ignore_outputs, container_requirement=False, allow_variables=True):
@@ -15,6 +16,7 @@ def red_validation(red_data, ignore_outputs, container_requirement=False, allow_
 
     - check if all keys in the red data are strings
     - validate red data with schema
+    - validate if RED version of the RED file matches the version of red-val
     - check if all given job values have a corresponding cli description
     - match types of cli description and job values
     - validate listings given in connectors
@@ -23,8 +25,6 @@ def red_validation(red_data, ignore_outputs, container_requirement=False, allow_
     - checks if globs do start with "/"
 
     Not checked anymore:
-    - checks if the cc core version matches the version of the file, because red_validation does not depend on cc-core
-      anymore
     - directory listings
 
     :param red_data: The red data to check
@@ -40,7 +40,14 @@ def red_validation(red_data, ignore_outputs, container_requirement=False, allow_
     except ValidationError as e:
         where = '/'.join([str(s) for s in e.absolute_path]) if e.absolute_path else '/'
         raise RedValidationError(
-            'REDFILE does not comply with jsonschema:\n\tkey in red file: {}\n\treason: {}'.format(where, e.message)
+            'RED-FILE does not comply with jsonschema:\n\tkey in red file: {}\n\treason: {}'.format(where, e.message)
+        )
+
+    # check version number
+    if str(red_data['redVersion']) != RED_VERSION:
+        raise RedValidationError(
+            'RED-File version number does not match version of red-val.\nred-file version: {}\nred-val  version: {}'
+            .format(red_data['redVersion'], RED_VERSION)
         )
 
     input_cli_job_pairs, output_cli_job_pairs = _create_cli_job_pairs(red_data, ignore_outputs)
