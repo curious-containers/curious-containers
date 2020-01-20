@@ -5,7 +5,6 @@ from flask import Flask, jsonify, request
 import zmq
 
 from cc_agency.commons.helper import create_flask_response
-from cc_core.version import VERSION as CORE_VERSION
 from cc_agency.version import VERSION as AGENCY_VERSION
 from cc_agency.commons.conf import Conf
 from cc_agency.commons.db import Mongo
@@ -51,7 +50,7 @@ def get_version():
     user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
 
     return create_flask_response(
-        {'agencyVersion': AGENCY_VERSION, 'coreVersion': CORE_VERSION},
+        {'agencyVersion': AGENCY_VERSION},
         auth,
         user.authentication_cookie
     )

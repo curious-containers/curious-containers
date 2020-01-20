@@ -7,6 +7,7 @@ import pymongo
 
 from cc_core.version import VERSION as CORE_VERSION
 from cc_agency.version import VERSION as AGENCY_VERSION
+from red_val.version import VERSION as RED_VAL_VERSION
 from cc_agency.commons.conf import Conf
 from cc_agency.commons.db import Mongo
 from cc_agency.commons.secrets import TrusteeClient
@@ -19,6 +20,7 @@ DESCRIPTION = 'CC-Agency Controller'
 def main():
     print('CC-Agency Version:', AGENCY_VERSION)
     print('CC-Core Version:', CORE_VERSION)
+    print('RED-Val Version:', RED_VAL_VERSION)
 
     parser = ArgumentParser(description=DESCRIPTION)
     parser.add_argument(
