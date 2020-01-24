@@ -4,6 +4,7 @@ from red_val.schemas.engine import engine_schema
 
 red_schema = {
     'definitions': {
+        'redVersion': {'enum': ['9']},
         'cli': cli_schema,
         'connector': connector_schema,
         'engine': engine_schema,
@@ -126,7 +127,7 @@ red_schema = {
     'oneOf': [{
         'type': 'object',
         'properties': {
-            'redVersion': {'enum': ['9']},
+            'redVersion': {'$ref': '#/definitions/redVersion'},
             'cli': {'$ref': '#/definitions/cli'},
             'inputs': {'$ref': '#/definitions/inputs'},
             'outputs': {'$ref': '#/definitions/outputs'},
@@ -139,7 +140,7 @@ red_schema = {
     }, {
         'type': 'object',
         'properties': {
-            'redVersion': {'type': 'string'},
+            'redVersion': {'$ref': '#/definitions/redVersion'},
             'cli': {'$ref': '#/definitions/cli'},
             'batches': {
                 'type': 'array',
