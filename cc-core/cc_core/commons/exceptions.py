@@ -59,7 +59,7 @@ def log_format_exception(e):
     text_l = []
 
     for tb in tb_list:
-        text_l.append(('In {:' + str(max_filename_len+2) + '} in {}()').format(
+        text_l.append(('  In {:' + str(max_filename_len+2) + '} in {}()').format(
             '{}:{}'.format(tb.filename, tb.lineno),
             tb.name
         ))

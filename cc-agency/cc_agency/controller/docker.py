@@ -10,7 +10,7 @@ from typing import List, Tuple, Dict
 from tarfile import StreamError
 
 import docker
-from cc_core.commons.exceptions import log_format_exception
+from cc_core.commons.exceptions import log_format_exception, AgentError
 from docker.errors import DockerException, APIError
 from docker.models.containers import Container
 from docker.models.images import Image
@@ -32,6 +32,7 @@ from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red,
     CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH
 from cc_agency.commons.helper import batch_failure, USER_SPECIFIED_STDOUT_KEY, USER_SPECIFIED_STDERR_KEY, \
     get_gridfs_filename, STDERR_FILE_KEY, STDOUT_FILE_KEY
+from cc_agency.commons.db import Mongo
 
 INSPECTION_IMAGE = 'docker.io/busybox:latest'
 NVIDIA_INSPECTION_IMAGE = 'nvidia/cuda:8.0-runtime'
@@ -233,7 +234,8 @@ class ClientProxy:
 
                 self._run_batch_container_failure(
                     batch_id,
-                    'agency was restarted during processing of this batch and the batch could not be started correctly.',
+                    'agency was restarted during processing of this batch and the batch could not be started '
+                    'correctly.',
                     'created'
                 )
         except Exception as e:
@@ -315,8 +317,7 @@ class ClientProxy:
         runtimes = info['Runtimes']
         return ram, cpus, runtimes
 
-    @staticmethod
-    def _log(message, e=None):
+    def _log(self, message, e=None):
         """
         Logs a message by printing it to make it visible to journalctl.
 
@@ -325,9 +326,10 @@ class ClientProxy:
         :param e: The exception to print
         :type e: Exception
         """
-        print(message, file=sys.stderr)
+        log = ['LOG({}):'.format(self._node_name), message]
         if e is not None:
-            print(log_format_exception(e), file=sys.stderr)
+            log.append(log_format_exception(e))
+        print('\n'.join(log), file=sys.stderr)
 
     def _batch_containers(self, status):
         """
@@ -572,6 +574,92 @@ class ClientProxy:
             except Exception as e:
                 self._log('Error while checking exited containers:', e)
 
+    class StdoutStderrGridfsHelper:
+        def __init__(self, container, mongo, gridfs_stdout_filename, gridfs_stderr_filename, batch_id,
+                     container_stdout_path, container_stderr_path):
+            """
+            Used to transfer stdout/stderr files into the mongodb gridfs with the given settings.
+
+            :param container: The container to retrieve stdout/stderr information from
+            :type container: Container
+            :param mongo: The mongo client used to write to
+            :type mongo: Mongo
+            :param gridfs_stdout_filename: The filename of the stdout file in gridfs
+            :type gridfs_stdout_filename: str
+            :param gridfs_stderr_filename: The filename of the stderr file in gridfs
+            :type gridfs_stderr_filename: str
+            :param batch_id: The batch id of the given batch (used for debug messages)
+            :type batch_id: str
+            :param container_stdout_path: The path inside the container where the stdout file is located
+            :type container_stdout_path: PurePosixPath
+            :param container_stderr_path: The path inside the container where the stderr file is located
+            :type container_stderr_path: PurePosixPath
+            """
+            self._container = container
+            self._mongo = mongo
+            self._gridfs_stdout_filename = gridfs_stdout_filename
+            self._gridfs_stderr_filename = gridfs_stderr_filename
+            self._batch_id = batch_id
+            self._container_stdout_path = container_stdout_path
+            self._container_stderr_path = container_stderr_path
+
+        def write_stdout_stderr_to_gridfs(self, include_stdout=True, include_stderr=True):
+            """
+            Helper function to write the stdout/stderr files of the docker container into mongo gridfs.
+
+            :param include_stdout: Whether to transfer stdout to gridfs. Default is True
+            :type include_stdout: bool
+            :param include_stderr: Whether to transfer stderr to gridfs. Default is True
+            :type include_stderr: bool
+
+            :return: A list of strings describing the errors that occurred during transferring the files.
+            :rtype: list[str]
+            """
+            errors = []
+            if include_stdout and self._container_stdout_path is not None:
+                try:
+                    archive_stdout = retrieve_file_archive(self._container, self._container_stdout_path)
+                    with get_first_tarfile_member(archive_stdout) as file_stdout:
+                        self._mongo.write_file_from_file(self._gridfs_stdout_filename, file_stdout)
+                except (DockerException, ValueError, StreamError, AgentError) as ex:
+                    errors.append(
+                        'Failed to create stdout for batch {}. Failed with the following message:\n{}'
+                        .format(self._batch_id, log_format_exception(ex))
+                    )
+
+            if include_stderr and self._container_stderr_path is not None:
+                try:
+                    archive_stderr = retrieve_file_archive(self._container, self._container_stderr_path)
+                    with get_first_tarfile_member(archive_stderr) as file_stderr:
+                        self._mongo.write_file_from_file(self._gridfs_stderr_filename, file_stderr)
+                except (DockerException, ValueError, StreamError, AgentError) as ex:
+                    errors.append(
+                        'Failed to create stderr for batch {}. Failed with the following message:\n{}'
+                        .format(self._batch_id, log_format_exception(ex))
+                    )
+
+            return errors
+
+    @staticmethod
+    def _join_out_err_to_debug_info(debug_info, out_err_errors):
+        """
+        Returns a string, that contains information from the given debug info and optionally for the given stdout/stderr
+        errors.
+
+        :param debug_info: A string describing the error
+        :type debug_info: str
+        :param out_err_errors: A list of strings describing errors that occurred during transfer of stdout/stderr
+                               from the container.
+        :type out_err_errors: list[str]
+        :return: A string containing the given debug info and the optional out_err_errors
+        :rtype: str
+        """
+        if out_err_errors:
+            out_err_str = '\n'.join(out_err_errors)
+            debug_info += '\nErrors during stdout/stderr transfer:\n{}'.format(out_err_str)
+
+        return debug_info
+
     def _check_exited_container(self, container, batch):
         """
         Inspects the logs of the given exited container and updates the database accordingly.
@@ -620,51 +708,41 @@ class ClientProxy:
         if STDERR_FILE_KEY in batch:
             container_stderr_path = CONTAINER_OUTPUT_DIR.joinpath(batch.get(STDERR_FILE_KEY))
 
-        def write_stdout_stderr_to_gridfs(include_stdout=True, include_stderr=True):
-            """
-            Helper function to write the stdout/stderr files of the docker container into mongo gridfs.
-
-            :return: A list of strings describing the errors that occurred during transferring the files.
-            :rtype: list[str]
-            """
-            errors = []
-            if include_stdout and container_stdout_path is not None:
-                try:
-                    archive_stdout = retrieve_file_archive(container, container_stdout_path)
-                    with get_first_tarfile_member(archive_stdout) as file_stdout:
-                        self._mongo.write_file_from_file(gridfs_stdout_filename, file_stdout)
-                except (DockerException, ValueError, StreamError) as ex:
-                    errors.append(
-                        'Failed to create stdout for batch {}. Failed with the following message:\n{}'
-                        .format(batch_id, log_format_exception(ex))
-                    )
-
-            if include_stderr and container_stderr_path is not None:
-                try:
-                    archive_stderr = retrieve_file_archive(container, container_stderr_path)
-                    with get_first_tarfile_member(archive_stderr) as file_stderr:
-                        self._mongo.write_file_from_file(gridfs_stderr_filename, file_stderr)
-                except (DockerException, ValueError, StreamError) as ex:
-                    errors.append(
-                        'Failed to create stderr for batch {}. Failed with the following message:\n{}'
-                        .format(batch_id, log_format_exception(ex))
-                    )
-
-            return errors
+        gridfs_helper = ClientProxy.StdoutStderrGridfsHelper(
+            container,
+            self._mongo,
+            gridfs_stdout_filename,
+            gridfs_stderr_filename,
+            batch_id,
+            container_stdout_path,
+            container_stderr_path
+        )
 
         try:
             jsonschema.validate(data, agent_result_schema)
         except jsonschema.ValidationError as e:
-            write_stdout_stderr_to_gridfs()
-            debug_info = 'CC-Agent data sent by callback does not comply with jsonschema:\n{}'\
-                         .format(log_format_exception(e))
+            out_err_errors = gridfs_helper.write_stdout_stderr_to_gridfs()
+            debug_info = 'CC-Agent stdout does not comply with jsonschema:\n{}'.format(log_format_exception(e))
+
+            if out_err_errors:
+                debug_info = ClientProxy._join_out_err_to_debug_info(debug_info, out_err_errors)
+                self._log('Failed to transfer stdout/stderr from container:\n{}'.format('\n'.join(out_err_errors)))
+
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
             self._log('Failed to validate restricted_red agent output:', e)
             return
 
         if data['state'] == 'failed':
-            write_stdout_stderr_to_gridfs()
+            out_err_errors = None
+            if data['process']['executed']:
+                out_err_errors = gridfs_helper.write_stdout_stderr_to_gridfs()
+
             debug_info = 'Batch failed.\nContainer stderr:\n{}\ndebug info:\n{}'.format(stderr_logs, data['debugInfo'])
+
+            if out_err_errors:
+                debug_info = ClientProxy._join_out_err_to_debug_info(debug_info, out_err_errors)
+                self._log('Failed to transfer stdout/stderr from container:\n{}'.format('\n'.join(out_err_errors)))
+
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
             return
 
@@ -672,14 +750,21 @@ class ClientProxy:
             {'_id': bson_batch_id},
             {'attempts': 1, 'node': 1, 'state': 1, USER_SPECIFIED_STDOUT_KEY: 1, USER_SPECIFIED_STDERR_KEY: 1}
         )
+        # check batch state
         if batch['state'] != 'processing':
-            write_stdout_stderr_to_gridfs()
+            out_err_errors = gridfs_helper.write_stdout_stderr_to_gridfs()
             debug_info = 'Batch failed.\nExited container, but not in state processing.'
+
+            if out_err_errors:
+                debug_info = ClientProxy._join_out_err_to_debug_info(debug_info, out_err_errors)
+                self._log('Failed to transfer stdout/stderr from container:\n{}'.format('\n'.join(out_err_errors)))
+
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
+            self._log('Container exited but batch is in state "{}"'.format(batch['state']))
             return
 
         # from here it is expected that the batch was successful
-        debug_info = write_stdout_stderr_to_gridfs(
+        debug_info = gridfs_helper.write_stdout_stderr_to_gridfs(
             include_stdout=batch[USER_SPECIFIED_STDOUT_KEY],
             include_stderr=batch[USER_SPECIFIED_STDERR_KEY]
         )
