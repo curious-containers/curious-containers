@@ -16,8 +16,13 @@ agent_result_schema = {
             'additionalProperties': False
         },
         'debugInfo': {
-            'type': 'array',
-            'items': {'type': 'string'}
+            'oneOf': [
+                {
+                    'type': 'array',
+                    'items': {'type': 'string'}
+                },
+                {'type': 'null'}
+            ]
         },
         'inputs': {'type': 'object'},  # this could be more precise
         'outputs': {'type': 'object'},  # this could be more precise
