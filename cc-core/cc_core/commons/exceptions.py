@@ -4,6 +4,9 @@ import re
 import traceback
 from traceback import format_exc
 
+from jsonschema import ValidationError
+from red_val.exceptions import format_validation_error
+
 
 def _hide_secret_values(text, secret_values):
     if secret_values:
@@ -64,7 +67,12 @@ def log_format_exception(e):
             tb.name
         ))
 
-    text_l.append('[{}]: []'.format(full_class_name(e), str(e)))
+    if isinstance(e, ValidationError):
+        message_str = format_validation_error(e, 'Schema Validation failed.')
+    else:
+        message_str = str(e)
+
+    text_l.append('[{}]: {}'.format(full_class_name(e), message_str))
     return '\n'.join(text_l)
 
 
