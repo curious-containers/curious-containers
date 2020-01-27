@@ -24,10 +24,19 @@ agent_result_schema = {
                 {'type': 'null'}
             ]
         },
-        'inputs': {'type': 'object'},  # this could be more precise
-        'outputs': {'type': 'object'},  # this could be more precise
+        'inputs': {
+            'oneOf': [
+                {'type': 'object'},  # this could be more precise
+                {'type': 'null'}
+            ]
+        },
+        'outputs': {
+            'oneOf': [
+                {'type': 'object'},  # this could be more precise
+                {'type': 'null'}
+            ]
+        },
         'state': {'enum': ['succeeded', 'failed']}
     },
-    'additionalProperties': True,
     'required': ['command', 'process', 'inputs', 'outputs', 'state']
 }
