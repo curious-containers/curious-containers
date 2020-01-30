@@ -13,7 +13,7 @@ PATTERN_KEY = '^[a-zA-Z0-9_-]+$'
 cli_schema = {
     'type': 'object',
     'properties': {
-        'cwlVersion': {'type': ['string', 'number']},
+        'cwlVersion': {'enum': ['v1.0']},
         'class': {'enum': ['CommandLineTool']},
         'baseCommand': {
             'oneOf': [
