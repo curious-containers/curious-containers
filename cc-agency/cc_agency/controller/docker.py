@@ -1053,7 +1053,7 @@ class ClientProxy:
         except Exception as e:
             self._log('Error while running batch container:', e)
             batch_id = str(batch['_id'])
-            self._run_batch_container_failure(batch_id, log_format_exception(e), batch['state'])
+            self._run_batch_container_failure(batch_id, log_format_exception(e), None)
 
     def _run_batch_container(self, batch, experiment):
         """

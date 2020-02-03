@@ -195,7 +195,7 @@ def batch_failure(
     :param debug_info: The debug info to write to the db
     :param ccagent: The ccagent to write to the db
     :param current_state: The expected current state of the batch to cancel. If this state does not match the batch from
-                          the db, the db entry is not updated.
+                          the db, the db entry is not updated. If current_state is None, the batch is updated
     :type current_state: str
     :param disable_retry_if_failed: If set to True, the batch is failed immediately, without giving another attempt
     :param docker_stats: The optional stats of the docker container, that will written under the "docker_stats" key in
@@ -240,8 +240,12 @@ def batch_failure(
     # dont use docker stats, because they do not contain useful information
     del docker_stats
 
+    update_filter = {'_id': bson_id}
+    if current_state is not None:
+        update_filter['state'] = current_state
+
     mongo.db['batches'].update_one(
-        {'_id': bson_id, 'state': current_state},
+        update_filter,
         {
             '$set': {
                 'state': new_state,
