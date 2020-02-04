@@ -21,6 +21,7 @@ DESCRIPTION = 'Run an experiment as described in a RESTRICTED_RED_FILE.'
 JSON_INDENT = 2
 
 RESTRICTED_RED_INPUT_CLASSES = {'File', 'Directory'}
+FILE_CHUNK_SIZE = 4096
 
 
 def attach_args(parser):
@@ -456,8 +457,12 @@ def calculate_file_checksum(path):
     """
     hasher = hashlib.sha1()
     with open(path, 'rb') as file:
-        buf = file.read()
-        hasher.update(buf)
+        while True:
+            buf = file.read(FILE_CHUNK_SIZE)
+            if buf:
+                hasher.update(buf)
+            else:
+                break
     return 'sha1${}'.format(hasher.hexdigest())
 
 
