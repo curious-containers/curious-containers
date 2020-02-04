@@ -21,7 +21,7 @@ DESCRIPTION = 'Run an experiment as described in a RESTRICTED_RED_FILE.'
 JSON_INDENT = 2
 
 RESTRICTED_RED_INPUT_CLASSES = {'File', 'Directory'}
-FILE_CHUNK_SIZE = 4096
+FILE_CHUNK_SIZE = 1024 * 1024
 
 
 def attach_args(parser):
