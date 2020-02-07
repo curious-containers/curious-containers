@@ -8,7 +8,7 @@ agent_result_schema = {
         'process': {
             'type': 'object',
             'properties': {
-                'returnCode': {'type': 'integer'},
+                'returnCode': {'type': ['integer', 'null']},
                 'executed': {'type': 'boolean'},
                 'stdout': {'type': ['string', 'null']},
                 'stderr': {'type': ['string', 'null']}
