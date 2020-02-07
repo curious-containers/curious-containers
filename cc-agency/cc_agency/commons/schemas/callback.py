@@ -10,8 +10,8 @@ agent_result_schema = {
             'properties': {
                 'returnCode': {'type': 'integer'},
                 'executed': {'type': 'boolean'},
-                'stdout': {'type': 'string'},
-                'stderr': {'type': 'string'}
+                'stdout': {'type': ['string', 'null']},
+                'stderr': {'type': ['string', 'null']}
             },
             'additionalProperties': False
         },
