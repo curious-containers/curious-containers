@@ -487,7 +487,7 @@ def get_listing_information(path, listing):
         if sub['class'] == 'File':
             sub_information['class'] = 'File'
             sub_information['basename'] = sub['basename']
-            sub_information['checksum'] = calculate_file_checksum(sub_path)
+            # sub_information['checksum'] = calculate_file_checksum(sub_path)
             sub_information['size'] = os.path.getsize(sub_path)
         elif sub['class'] == 'Directory':
             sub_information['class'] = 'Directory'
@@ -623,7 +623,7 @@ class InputConnectorRunner:
         }
 
         if self._input_class.is_file():
-            dict_representation['checksum'] = calculate_file_checksum(self._path)
+            # dict_representation['checksum'] = calculate_file_checksum(self._path)
             dict_representation['size'] = os.path.getsize(self._path)
         elif self._input_class.is_directory() and self._listing:
             listing = get_listing_information(self._path, self._listing)
@@ -926,7 +926,7 @@ class CliOutputRunner:
             path = paths[0]
 
             if self._output_class.is_file_like():
-                dict_representation['checksum'] = calculate_file_checksum(path)
+                # dict_representation['checksum'] = calculate_file_checksum(path)
                 dict_representation['size'] = os.path.getsize(path)
 
             dict_representation['path'] = path
