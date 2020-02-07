@@ -264,7 +264,6 @@ def execute_connector(connector_command, top_level_argument, access=None, path=N
     :param path: The path where to receive the file/directory to or which file/directory to send
     :param listing: An optional listing, that is given to the connector as temporary file
     :return: A dictionary with keys 'returnCode', 'stdOut', 'stdErr'
-    :rtype: ExecutionResult
     """
     # create access file
     access_file = None
@@ -1012,8 +1011,8 @@ class InputConnectorRunner01(InputConnectorRunner):
 
         if not execution_result.successful():
             raise ConnectorError(
-                'Connector failed to receive file for input key "{}".\nFailed with the following message:\n{}\n{}'
-                .format(self.format_input_key(), execution_result.get_std_err(), execution_result.get_std_out())
+                'Connector failed to receive file for input key "{}".\nFailed with the following message:\n{}'
+                .format(self.format_input_key(), execution_result.get_std_err())
             )
 
     def receive_file_validate(self):
