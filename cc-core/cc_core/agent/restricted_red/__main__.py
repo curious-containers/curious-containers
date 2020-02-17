@@ -252,7 +252,7 @@ def resolve_connector_cli_version(connector_command, connector_cli_version_cache
         connector_cli_version_cache[connector_command] = cli_version
         return cli_version
     else:
-        std_err = result.get_std_err()
+        std_err = result.get_connector_error_text()
         raise ConnectorError(
             'Could not detect cli version for connector "{}". Failed with following message:\n{}'
             .format(connector_command, std_err)
@@ -1017,8 +1017,10 @@ class InputConnectorRunner01(InputConnectorRunner):
 
         if not execution_result.successful():
             raise ConnectorError(
-                'Connector failed to receive file for input key "{}".\nFailed with the following message:\n{}'
-                .format(self.format_input_key(), execution_result.get_std_err())
+                'Connector failed to receive file for input key "{}".\nConnector return code: {}\n'
+                'Failed with the following message:\n{}'.format(
+                    self.format_input_key(), execution_result.return_code, execution_result.get_connector_error_text()
+                )
             )
 
     def receive_file_validate(self):
@@ -1029,8 +1031,10 @@ class InputConnectorRunner01(InputConnectorRunner):
         )
         if not execution_result.successful():
             raise ConnectorError(
-                'Connector failed to validate receive file for input key "{}".\nFailed with the following message:\n{}'
-                .format(self.format_input_key(), execution_result.get_std_err())
+                'Connector failed to validate receive file for input key "{}".\nConnector return code: {}\n'
+                'Failed with the following message:\n{}'.format(
+                    self.format_input_key(), execution_result.return_code, execution_result.get_connector_error_text()
+                )
             )
 
     def receive_dir(self):
@@ -1044,8 +1048,10 @@ class InputConnectorRunner01(InputConnectorRunner):
 
         if not execution_result.successful():
             raise ConnectorError(
-                'Connector failed to receive directory for input key "{}".\nFailed with the following message:\n{}'
-                .format(self.format_input_key(), execution_result.get_std_err())
+                'Connector failed to receive directory for input key "{}".\nConnector return code: {}\n'
+                'Failed with the following message:\n{}'.format(
+                    self.format_input_key(), execution_result.return_code, execution_result.get_connector_error_text()
+                )
             )
 
     def receive_dir_validate(self):
@@ -1058,9 +1064,10 @@ class InputConnectorRunner01(InputConnectorRunner):
 
         if not execution_result.successful():
             raise ConnectorError(
-                'Connector failed to validate receive directory for input key "{}".\n'
-                'Failed with the following message:\n{}'
-                .format(self.format_input_key(), execution_result.get_std_err())
+                'Connector failed to validate receive directory for input key "{}".\nConnector return code: {}\n'
+                'Failed with the following message:\n{}'.format(
+                    self.format_input_key(), execution_result.return_code, execution_result.get_connector_error_text()
+                )
             )
 
     def mount_dir(self):
@@ -1073,8 +1080,10 @@ class InputConnectorRunner01(InputConnectorRunner):
 
         if not execution_result.successful():
             raise ConnectorError(
-                'Connector failed to mount directory for input key "{}".\nFailed with the following message:\n{}'
-                .format(self.format_input_key(), execution_result.get_std_err())
+                'Connector failed to mount directory for input key "{}".\nConnector return code: {}\n'
+                'Failed with the following message:\n{}'.format(
+                    self.format_input_key(), execution_result.return_code, execution_result.get_connector_error_text()
+                )
             )
 
     def mount_dir_validate(self):
@@ -1086,9 +1095,10 @@ class InputConnectorRunner01(InputConnectorRunner):
 
         if not execution_result.successful():
             raise ConnectorError(
-                'Connector failed to validate mount directory for input key "{}".\n'
-                'Failed with the following message:\n{}'
-                .format(self.format_input_key(), execution_result.get_std_err())
+                'Connector failed to validate mount directory for input key "{}".\nConnector return code: {}\n'
+                'Failed with the following message:\n{}'.format(
+                    self.format_input_key(), execution_result.return_code, execution_result.get_connector_error_text()
+                )
             )
 
     def umount_dir(self):
@@ -1096,8 +1106,10 @@ class InputConnectorRunner01(InputConnectorRunner):
 
         if not execution_result.successful():
             raise ConnectorError(
-                'Connector failed to umount directory for input key "{}".\nFailed with the following message:\n{}'
-                .format(self.format_input_key(), execution_result.get_std_err())
+                'Connector failed to umount directory for input key "{}".\nConnector return code: {}\n'
+                'Failed with the following message:\n{}'.format(
+                    self.format_input_key(), execution_result.return_code, execution_result.get_connector_error_text()
+                )
             )
 
 
@@ -1116,8 +1128,10 @@ class OutputConnectorRunner01(OutputConnectorRunner):
 
         if not execution_result.successful():
             raise ConnectorError(
-                'Connector failed to send file for output key "{}".\nFailed with the following message:\n{}'
-                .format(self._output_key, execution_result.get_std_err())
+                'Connector failed to send file for output key "{}".\nConnector return code: {}\n'
+                'Failed with the following message:\n{}'.format(
+                    self._output_key, execution_result.return_code, execution_result.get_connector_error_text()
+                )
             )
 
     def send_file_validate(self):
@@ -1129,8 +1143,10 @@ class OutputConnectorRunner01(OutputConnectorRunner):
 
         if not execution_result.successful():
             raise ConnectorError(
-                'Connector failed to validate send file for output key "{}".\nFailed with the following message:\n{}'
-                .format(self._output_key, execution_result.get_std_err())
+                'Connector failed to validate send file for output key "{}".\nConnector return code: {}\n'
+                'Failed with the following message:\n{}'.format(
+                    self._output_key, execution_result.return_code, execution_result.get_connector_error_text()
+                )
             )
 
     def send_dir(self, path):
@@ -1144,9 +1160,9 @@ class OutputConnectorRunner01(OutputConnectorRunner):
 
         if not execution_result.successful():
             raise ConnectorError(
-                'Connector failed to validate send directory for output key "{}".\n'
+                'Connector failed to validate send directory for output key "{}".\nConnector return code: {}\n'
                 'Failed with the following message:\n{}'
-                .format(self._output_key, execution_result.get_std_err())
+                .format(self._output_key, execution_result.return_code, execution_result.get_connector_error_text())
             )
 
     def send_dir_validate(self):
@@ -1159,9 +1175,9 @@ class OutputConnectorRunner01(OutputConnectorRunner):
 
         if not execution_result.successful():
             raise ConnectorError(
-                'Connector failed to validate send directory for output key "{}".\n'
+                'Connector failed to validate send directory for output key "{}".\nConnector return code: {}\n'
                 'Failed with the following message:\n{}'
-                .format(self._output_key, execution_result.get_std_err())
+                .format(self._output_key, execution_result.return_code, execution_result.get_connector_error_text())
             )
 
 
@@ -1402,6 +1418,31 @@ class ExecutionResult:
         if self.std_err is None:
             return None
         return '\n'.join(self.std_err)
+
+    def get_connector_error_text(self):
+        """
+        Returns a readable text describing the error that occurred during the execution of a connector.
+
+        :return: A text describing an error
+        :rtype: str
+        """
+        error_text = []
+
+        if self.return_code < 0:
+            error_text.append('Connector was killed by the operating system with signal {}'.format(-self.return_code))
+
+        stderr = self.get_std_err()
+        if stderr:
+            error_text.append(stderr)
+        else:
+            stdout = self.get_std_out()
+            if stdout:
+                error_text.append('Connector stderr was empty. Showing stdout.\n{}'.format(stdout))
+
+        if not error_text:
+            error_text.append('Could not get error message. Connector stderr and stdout is empty.')
+
+        return '\n'.join(error_text)
 
     def get_std_out(self):
         if self.std_out is None:
