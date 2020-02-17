@@ -33,6 +33,10 @@ def attach_args(parser):
         '-o', '--outputs', action='store_true',
         help='Enable connectors specified in the RESTRICTED_RED_FILE outputs section.'
     )
+    parser.add_argument(
+        '--disable-connector-validation', action='store_true',
+        help='Skip connector validation.'
+    )
 
 
 def main():
@@ -107,7 +111,9 @@ def run(args):
         connector_manager.import_output_connectors(outputs, cli_outputs, output_mode, cli_stdout, cli_stderr)
         connector_manager.prepare_directories()
 
-        connector_manager.validate_connectors(validate_outputs=(output_mode == OutputMode.Connectors))
+        if not args.disable_connector_validation:
+            connector_manager.validate_connectors(validate_outputs=(output_mode == OutputMode.Connectors))
+
         connector_manager.receive_connectors()
         result['inputs'] = connector_manager.inputs_to_dict()
 
@@ -1692,7 +1698,7 @@ class ConnectorManager:
 
 def exception_format():
     exc_text = format_exc()
-    return [_lstrip_quarter(l.replace("'", '').rstrip()) for l in exc_text.split('\n') if l]
+    return [_lstrip_quarter(line.replace("'", '').rstrip()) for line in exc_text.split('\n') if line]
 
 
 def _lstrip_quarter(s):
@@ -1717,7 +1723,7 @@ def print_exception(exception):
 
 
 def _split_lines(lines):
-    return [l for l in lines.split(os.linesep) if l]
+    return [line for line in lines.split(os.linesep) if line]
 
 
 class ConnectorError(Exception):

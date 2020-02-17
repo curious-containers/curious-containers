@@ -64,9 +64,9 @@ class AgentExecutionResult:
         if self._parsed_stdout is None:
             try:
                 self._parsed_stdout = json.loads(self._stdout)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, TypeError):
                 raise AgentError(
-                    'Could not parse stdout of agent.\n'
+                    'Internal Error. Could not parse stdout of agent.\n'
                     'Agent stdout:\n{}'
                     '\nAgent stderr:\n{}'
                     .format(self._stdout, self._stderr)

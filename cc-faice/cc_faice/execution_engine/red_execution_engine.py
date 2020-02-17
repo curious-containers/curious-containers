@@ -41,7 +41,8 @@ def run(
     preserve_environment=None,
     insecure=False,
     output_mode=OutputMode.Connectors,
-    gpu_ids=None
+    gpu_ids=None,
+    disable_connector_validation=None
 ):
     """
     Executes a RED Experiment.
@@ -55,6 +56,8 @@ def run(
                         output connectors. If Directory faice will copy the output files into the host output directory.
     :param gpu_ids: A list of gpu ids, that should be used. If None all gpus are considered.
     :type gpu_ids: List[int] or None
+    :param disable_connector_validation: If set, the execution engine will skip connector validation
+    :type disable_connector_validation: bool
 
     :raise TemplateError: If template keys are found in the given red data
     """
@@ -114,7 +117,8 @@ def run(
                 ram=ram,
                 gpus=gpus,
                 environment=environment,
-                insecure=insecure
+                insecure=insecure,
+                disable_connector_validation=disable_connector_validation
             )
 
             # handle execution result
@@ -344,7 +348,8 @@ def run_restricted_red_batch(
         ram,
         gpus,
         environment,
-        insecure
+        insecure,
+        disable_connector_validation
 ):
     """
     Executes an restricted_red agent inside a docker container that takes the given restricted_red batch as argument.
@@ -365,6 +370,8 @@ def run_restricted_red_batch(
     :param gpus: The gpus to use for this batch execution
     :param environment: The environment to use for the docker container
     :param insecure: Allow insecure capabilities
+    :param disable_connector_validation: If set, the execution engine will skip connector validation
+    :type disable_connector_validation: bool
 
     :return: A container result
     :rtype: ContainerExecutionResult
@@ -372,10 +379,7 @@ def run_restricted_red_batch(
 
     container_name = str(uuid4())
 
-    command = _create_restricted_red_agent_command()
-
-    if output_mode == OutputMode.Connectors:
-        command.append('--outputs')
+    command = _create_restricted_red_agent_command(output_mode, disable_connector_validation)
 
     is_mounting = define_is_mounting(restricted_red_batch.data, insecure)
 
@@ -585,12 +589,24 @@ def define_is_mounting(restricted_red_batch, insecure):
     return False
 
 
-def _create_restricted_red_agent_command():
+def _create_restricted_red_agent_command(output_mode, disable_connector_validation):
     """
     Defines the command to execute inside the docker container to execute the restricted_red agent.
     The resulting command looks similar to "python3 /cc/restricted_red_agent.py /cc/restricted_red_file.json"
 
+    :param output_mode: If output mode == Connectors the restricted_red agent will be started with '--outputs' flag
+                        Otherwise this function will retrieve the output files with container.get_archive()
+    :param disable_connector_validation: If set, the execution engine will skip connector validation
+    :type disable_connector_validation: bool
+
     :return: A list of strings to execute inside the docker container.
     :rtype: List[str]
     """
-    return [PYTHON_INTERPRETER, CONTAINER_AGENT_PATH.as_posix(), CONTAINER_RESTRICTED_RED_FILE_PATH.as_posix()]
+    command = [PYTHON_INTERPRETER, CONTAINER_AGENT_PATH.as_posix(), CONTAINER_RESTRICTED_RED_FILE_PATH.as_posix()]
+
+    if output_mode == OutputMode.Connectors:
+        command.append('--outputs')
+    if disable_connector_validation:
+        command.append('--disable-connector-validation')
+
+    return command

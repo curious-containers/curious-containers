@@ -69,6 +69,10 @@ def attach_args(parser):
         help='Only valid for ccagency. If present the execution engine should stop the experiment execution, if the '
              'experiment failed. Otherwise cc-agency is allowed to retry the experiment.'
     )
+    parser.add_argument(
+        '--disable-connector-validation', action='store_true',
+        help='If set, the connector validation functions are skipped'
+    )
 
 
 def main():
@@ -110,8 +114,10 @@ def _has_outputs(red_data):
 
 
 ALLOWED_EXECUTION_ENGINE_ARGUMENTS = {
-    'ccfaice': ['preserve_environment', 'disable_pull', 'leave_container', 'insecure', 'gpu_ids'],
-    'ccagency': ['disable_retry']
+    'ccfaice': [
+        'preserve_environment', 'disable_pull', 'leave_container', 'insecure', 'gpu_ids', 'disable_connector_validation'
+    ],
+    'ccagency': ['disable_retry', 'disable_connector_validation']
 }
 
 
@@ -152,6 +158,7 @@ def run(
         insecure,
         gpu_ids,
         disable_retry,
+        disable_connector_validation,
         **_
 ):
     """
@@ -174,6 +181,8 @@ def run(
     :type gpu_ids: List[int] or None
     :param disable_retry: If True, the execution engine will not retry the experiment, if it fails.
     :type disable_retry: bool
+    :param disable_connector_validation: If True, the execution engine will skip connector validation
+    :type disable_connector_validation: bool
 
     :return: a dictionary containing debug information about the process
     """
@@ -195,7 +204,8 @@ def run(
             leave_container=leave_container,
             insecure=insecure,
             gpu_ids=gpu_ids,
-            disable_retry=disable_retry
+            disable_retry=disable_retry,
+            disable_connector_validation=disable_connector_validation
         )
 
         if 'execution' not in red_data:
@@ -203,9 +213,12 @@ def run(
 
         complete_red_variables(red_data, keyring_service, non_interactive)
 
-        # exec via CC-FAICE
+        # exec via faice or agency
         if red_data['execution']['engine'] == 'ccfaice':
-            return run_faice(red_data, preserve_environment, disable_pull, leave_container, insecure, gpu_ids)
+            return run_faice(
+                red_data, preserve_environment, disable_pull, leave_container, insecure, gpu_ids,
+                disable_connector_validation
+            )
         elif red_data['execution']['engine'] == 'ccagency':
             return run_agency(red_data, disable_retry)
 
@@ -217,7 +230,9 @@ def run(
     return result
 
 
-def run_faice(red_data, preserve_environment, disable_pull, leave_container, insecure, gpu_ids):
+def run_faice(
+        red_data, preserve_environment, disable_pull, leave_container, insecure, gpu_ids, disable_connector_validation
+):
     """
     Runs the faice execution engine.
 
@@ -234,6 +249,8 @@ def run_faice(red_data, preserve_environment, disable_pull, leave_container, ins
     :type insecure: bool
     :param gpu_ids: List of gpu ids specifying which gpus to use
     :type gpu_ids: list[int]
+    :param disable_connector_validation: If set, the execution engine will skip connector validation
+    :type disable_connector_validation: bool
     """
     # use connectors, if red file specifies outputs
     if _has_outputs(red_data):
@@ -248,7 +265,8 @@ def run_faice(red_data, preserve_environment, disable_pull, leave_container, ins
         preserve_environment=preserve_environment,
         insecure=insecure,
         output_mode=faice_output_mode,
-        gpu_ids=gpu_ids
+        gpu_ids=gpu_ids,
+        disable_connector_validation=disable_connector_validation
     )
 
     brief_exception_text = result.get('briefExceptionText')
