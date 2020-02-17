@@ -19,7 +19,7 @@ from cc_agency.commons.db import Mongo
 from cc_agency.broker.auth import Auth
 
 
-def _prepare_red_data(data, user, disable_retry):
+def _prepare_red_data(data, user, disable_retry, disable_connector_validation):
     timestamp = time()
 
     experiment = {
@@ -43,6 +43,7 @@ def _prepare_red_data(data, user, disable_retry):
 
         # add retry if failed to experiment settings
         stripped_settings['retryIfFailed'] = not disable_retry
+        stripped_settings['disableConnectorValidation'] = disable_connector_validation
 
         experiment['execution'] = {
             'engine': data['execution']['engine'],
@@ -130,6 +131,7 @@ def red_routes(app, mongo, auth, controller, trustee_client):
 
         data = request.json
         disable_retry = str_to_bool(request.args.get('disableRetry', default=False))
+        disable_connector_validation = str_to_bool(request.args.get('disableConnectorValidation', default=False))
 
         try:
             red_validation(data, False)
@@ -173,7 +175,7 @@ def red_routes(app, mongo, auth, controller, trustee_client):
         except Exception:
             raise BadRequest('\n'.join(exception_format(secret_values=secret_values)))
 
-        experiment, batches, secrets = _prepare_red_data(data, user, disable_retry)
+        experiment, batches, secrets = _prepare_red_data(data, user, disable_retry, disable_connector_validation)
 
         response = trustee_client.store(secrets)
         if response['state'] == 'failed':

@@ -1134,9 +1134,12 @@ class ClientProxy:
         command = [
             'python3',
             CONTAINER_AGENT_PATH.as_posix(),
+            CONTAINER_RESTRICTED_RED_FILE_PATH.as_posix(),
             '--outputs',
-            CONTAINER_RESTRICTED_RED_FILE_PATH.as_posix()
         ]
+
+        if experiment.get('execution', {}).get('settings', {}).get('disableConnectorValidation'):
+            command.append('--disable-connector-validation')
 
         ram = experiment['container']['settings']['ram']
         mem_limit = '{}m'.format(ram)

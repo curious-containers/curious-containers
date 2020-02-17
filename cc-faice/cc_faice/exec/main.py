@@ -220,7 +220,7 @@ def run(
                 disable_connector_validation
             )
         elif red_data['execution']['engine'] == 'ccagency':
-            return run_agency(red_data, disable_retry)
+            return run_agency(red_data, disable_retry, disable_connector_validation)
 
     except Exception as e:
         print_exception(e, secret_values)
@@ -276,7 +276,7 @@ def run_faice(
     return result
 
 
-def run_agency(red_data, disable_retry):
+def run_agency(red_data, disable_retry, disable_connector_validation):
     """
     Runs the agency execution engine
 
@@ -284,6 +284,9 @@ def run_agency(red_data, disable_retry):
     :type red_data: dict[str, Any]
     :param disable_retry: Specifies, if the experiment should be repeated, if it failed
     :type disable_retry: bool
+    :param disable_connector_validation: If set, the execution engine will skip connector validation
+    :type disable_connector_validation: bool
+
     :return: The result dictionary of the execution
     :rtype: dict[str, Any]
     """
@@ -311,7 +314,7 @@ def run_agency(red_data, disable_retry):
             access['auth']['password']
         ),
         json=red_data,
-        params={'disableRetry': int(disable_retry)}
+        params={'disableRetry': int(disable_retry), 'disableConnectorValidation': int(disable_connector_validation)}
     )
     if 400 <= r.status_code < 500:
         try:
