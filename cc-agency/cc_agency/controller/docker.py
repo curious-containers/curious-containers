@@ -785,7 +785,7 @@ class ClientProxy:
                         'debugInfo': debug_info or None,
                         'node': batch['node'],
                         'ccagent': data,
-                        'dockerStats': docker_stats
+                        # 'dockerStats': docker_stats
                     }
                 }
             }
@@ -1083,7 +1083,7 @@ class ClientProxy:
                         'debugInfo': None,
                         'node': self._node_name,
                         'ccagent': None,
-                        'dockerStats': None
+                        # 'dockerStats': None
                     }
                 }
             }
