@@ -415,7 +415,12 @@ def red_routes(app, mongo, auth, controller, trustee_client):
             'state': 1,
             'experimentId': 1,
             'node': 1,
-            'batchesListIndex': 1
+            'batchesListIndex': 1,
+            'history': {
+                'node': 1,
+                'state': 1,
+                'time': 1
+            }
         }})
 
         aggregate.append({'$sort': {'registrationTime': 1 if ascending else -1}})
