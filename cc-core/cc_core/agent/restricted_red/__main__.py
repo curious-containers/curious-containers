@@ -1227,9 +1227,11 @@ def create_input_connector_runner(input_key, input_value, input_index, assert_cl
 
     try:
         cli_version = resolve_connector_cli_version(connector_command, connector_cli_version_cache)
-    except ConnectorError:
-        raise ConnectorError('Could not resolve connector cli version for connector "{}" in input key "{}"'
-                             .format(connector_command, format_key_index(input_key, input_index)))
+    except ConnectorError as e:
+        raise ConnectorError(
+            'Could not resolve connector cli version for connector "{}" in input key "{}". Failed with the following'
+            ' message:\n{}'.format(connector_command, format_key_index(input_key, input_index), str(e))
+        )
 
     if mount and not input_class.is_directory():
         raise ConnectorError('Connector for input key "{}" has mount flag set but class is "{}". '
