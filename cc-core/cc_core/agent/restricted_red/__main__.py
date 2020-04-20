@@ -120,10 +120,9 @@ def run(args):
         # execute command
         try:
             execution_result = execute(command, stdout_file=cli_stdout, stderr_file=cli_stderr)
-        except PermissionError as e:
-            raise PermissionError(
-                'Could not execute command "{}" in directory "{}". Error:\n{}'.format(command, os.getcwd(), str(e))
-            )
+        except ExecutionError:
+            raise
+
         result['process']['returnCode'] = execution_result.return_code
         result['process']['executed'] = True
         result['process']['stdout'] = cli_stdout
@@ -243,8 +242,8 @@ def resolve_connector_cli_version(connector_command, connector_cli_version_cache
 
     try:
         result = execute([connector_command, 'cli-version'])
-    except FileNotFoundError:
-        raise ConnectorError('Could not find connector "{}"'.format(connector_command))
+    except ExecutionError as e:
+        raise ConnectorError('Failed to execute connector "{}"\n{}'.format(connector_command, str(e)))
 
     std_out = result.std_out
     if result.successful() and len(std_out) == 1:
@@ -1520,16 +1519,23 @@ def execute(command, work_dir=None, stdout_file=None, stderr_file=None):
                         in the execution result
     :return: An ExecutionResult. stdout/stderr of the execution result will be None, if stdout_file/stderr_file is given
     :rtype: ExecutionResult
+
+    :raise ExecutionError: If the file to execute could not be found
     """
     if shutil.which(command[0]) is None:
-        return ExecutionResult([], ['Command "{}" not in PATH.'.format(command[0])], 127)
+        raise ExecutionError('Command "{}" not in PATH.'.format(command[0]))
 
     try:
         return_code, std_out, std_err = _exec(command, work_dir, stdout=stdout_file, stderr=stderr_file)
     except FileNotFoundError as e:
-        error_msg = ['Command "{}" not found.'.format(command[0])]
-        error_msg.extend(_split_lines(str(e)))
-        return ExecutionResult([], error_msg, 127)
+        raise ExecutionError('Command "{}" not found.\n{}'.format(command[0], str(e)))
+
+    except PermissionError as e:
+        raise ExecutionError(
+            'Could not execute command "{}" in directory "{}". PermissionError:\n{}'.format(
+                command, os.getcwd(), str(e)
+            )
+        )
 
     if std_out:
         std_out = _split_lines(std_out)
