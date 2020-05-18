@@ -849,6 +849,8 @@ class ClientProxy:
         images_with_execution_time = {}
 
         for image_url in self._mongo.db.experiments.distinct('container.settings.image.url'):
+            if image_url == '':
+                continue
             try:
                 image = self._client.images.get(image_url)
             except docker.errors.ImageNotFound:
