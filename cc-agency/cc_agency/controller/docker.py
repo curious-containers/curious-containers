@@ -858,6 +858,9 @@ class ClientProxy:
                 self.do_inspect()
                 self._log('Failed to get image "{}" with registration time:'.format(image_url), e)
                 continue
+            except docker.errors.NullResource as e:
+                self._log('Failed to get old docker image "{}".'.format(image_url), e)
+                continue
 
             latest_experiment = self._mongo.db.experiments.find_one(
                 {'container.settings.image.url': image_url},
