@@ -48,7 +48,7 @@ def run(
     Executes a RED Experiment.
 
     :param red_data: A dict containing red data that will be executed. This red data cannot contain template keys
-    :param disable_pull: If True the docker image is not pulled from an registry
+    :param disable_pull: If True the docker image is not pulled from a registry
     :param leave_container: If set to True, the executed docker container will not be removed.
     :param preserve_environment: List of environment variables to preserve inside the docker container.
     :param insecure: Allow insecure capabilities
@@ -175,7 +175,7 @@ def get_gpu_devices(docker_manager, gpu_ids):
 
 def get_gpus(docker_manager, gpu_settings, gpu_ids):
     """
-    Returns a list of gpus which are sufficient for the given gpu settings. Otherwise raise an Exception
+    Returns a list of gpus which are sufficient for the given gpu settings. Otherwise, raise an Exception
 
     :param docker_manager: The DockerManager used to query gpus
     :type docker_manager: DockerManager
@@ -193,7 +193,7 @@ def get_gpus(docker_manager, gpu_settings, gpu_ids):
 
     gpu_requirements = get_gpu_requirements(gpu_settings)
 
-    # dont do anything, if no gpus are required
+    # don't do anything, if no gpus are required
     if gpu_requirements or gpu_ids:
         gpu_devices = get_gpu_devices(docker_manager, gpu_ids)
 
@@ -352,14 +352,14 @@ def run_restricted_red_batch(
         disable_connector_validation
 ):
     """
-    Executes an restricted_red agent inside a docker container that takes the given restricted_red batch as argument.
+    Executes a restricted_red agent inside a docker container that takes the given restricted_red batch as argument.
 
     :param restricted_red_batch: The restricted_red batch to execute
     :type restricted_red_batch: RestrictedRedBatch
     :param docker_manager: The docker manager to use for executing the batch
     :type docker_manager: DockerManager
     :param docker_image: The docker image url to use. This docker image should be already present on the host machine
-    :param host_outdir: The outputs directory of the host. This is mounted as outdir inside the docker container
+    :param host_outdir: The output directory of the host. This is mounted as outdir inside the docker container
                         mounted into the docker container, where host_outputs_dir is the host directory.
     :type host_outdir: Path
     :param output_mode: If output mode == Connectors the restricted_red agent will be started with '--outputs' flag
@@ -563,7 +563,7 @@ def _handle_stdout_stderr_on_failure(host_outdir, restricted_red_batch, containe
 
         try:
             with retrieve_file_archive(container, container_path) as file_archive:
-                # copy archive file to outputs directory
+                # copy archive file to output directory
                 with get_first_tarfile_member(file_archive) as source_file:
                     with open(host_file_path, 'wb') as target_file:
                         for line in source_file.readlines():
