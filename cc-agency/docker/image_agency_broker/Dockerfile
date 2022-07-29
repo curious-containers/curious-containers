@@ -20,4 +20,9 @@ RUN python3 -m venv /home/cc/ccagency-venv && . /home/cc/ccagency-venv/bin/activ
 RUN mkdir -p /home/cc/.config
 ADD --chown=cc:cc cc-agency.yml /home/cc/.config/cc-agency.yml
 
+ADD --chown=cc:cc create_broker_user.py /home/cc/create_broker_user.py
+ADD --chown=cc:cc start_broker.sh /home/cc/start_broker.sh
+
+RUN chmod u+x /home/cc/start_broker.sh /home/cc/create_broker_user.py
+
 ENV VIRTUAL_ENV=/home/cc/ccagency-venv

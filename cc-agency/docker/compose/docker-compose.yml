@@ -28,7 +28,7 @@ services:
     container_name: agency_broker
     restart: "no"
     image: bruno1996/cc-agency-broker:0.0
-    command: /usr/bin/uwsgi /opt/ccagency/privileged/ccagency-broker.ini
+    command: /home/cc/start_broker.sh
     depends_on:
       - mongodb
       - agency-controller
@@ -38,16 +38,10 @@ services:
         source: broker_socket
         target: /opt/ccagency/unprivileged
     ports:
-      - "8080:8080"
-  # apache:
-  #   container_name: agency_httpd
-  #   image: bruno1996/cc-agency-broker:0.0
-  #    depends_on:
-  #        - agency-broker
-  #     volumes:
-  #       - type: volume
-  #         source: broker_socket
-  #         target: /opt/ccagency/unprivileged
+      - "127.0.0.1:8080:8080"
+    environment:
+      - AGENCY_USER=agency_user
+      - AGENCY_PASSWORD=agency_password
 
 volumes:
   broker_socket:
