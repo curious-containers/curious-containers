@@ -1,0 +1,11 @@
+Description=CC-Agency Trustee
+Documentation=https://www.curious-containers.cc/
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/uwsgi /opt/ccagency/privileged/ccagency-trustee.ini
+Restart=no
+Environment=VIRTUAL_ENV=/home/cc/ccagency-venv
+
+[Install]
+WantedBy=multi-user.target
