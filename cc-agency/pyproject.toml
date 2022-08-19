@@ -9,11 +9,11 @@ homepage = "https://www.curious-containers.cc/"
 description = "CC-Agency is part of the Curious Containers project. It connects to a cluster of docker-engines for the distributed execution of reproducible data-driven experiments defined in the RED format."
 
 [tool.poetry.dependencies]
-python = "^3.6"
-flask = "^1.0"
+python = "^3.7"
+flask = "^2.2"
 pyzmq = "^23.0"
 pymongo = "^3.7"
-cryptography = "^2.2"
+cryptography = "^37.0"
 cc-core = "~9.1"
 
 [tool.poetry.dev-dependencies]

@@ -9,7 +9,7 @@ homepage = "https://www.curious-containers.cc/"
 description = "FAICE (Fair Collaboration and Experiments) is part of the Curious Containers project. It enables researchers to perform and distribute reproducible data-driven experiments defined in the RED format."
 
 [tool.poetry.dependencies]
-python = "^3.5"
+python = "^3.7"
 cc-core = "~9.1"
 red-fill = "~9.1"
 

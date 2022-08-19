@@ -9,11 +9,11 @@ homepage = "https://www.curious-containers.cc/"
 description = "CC-Core is part of the Curious Containers project. It contains shared code of the CC-FAICE and CC-Agency packages."
 
 [tool.poetry.dependencies]
-python = "^3.5"
-docker = "^4.0"
-"ruamel.yaml" = "^0.16.5"
+python = "^3.7"
+docker = "^6.0"
+"ruamel.yaml" = "^0.17"
 
 red-val = "~9.1"
 
 [tool.poetry.dev-dependencies]
-pytest = "^4.3"
+pytest = "^7.0"
