@@ -60,7 +60,7 @@ class Auth:
     def _create_unauthorized(description, realm=DEFAULT_REALM):
         www_authenticate = WWWAuthenticate()
         www_authenticate.set_basic(realm=realm)
-        return Unauthorized(description=description, www_authenticate=www_authenticate.to_header())
+        return Unauthorized(description=description, www_authenticate=www_authenticate)
 
     def verify_user(self, auth, cookies, ip):
         """
