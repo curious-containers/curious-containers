@@ -5,6 +5,7 @@ VARIABLE_SEPARATOR_START = '{{'
 VARIABLE_SEPARATOR_END = '}}'
 
 PRIVATE_KEYS = {'access', 'auth'}
+DEFAULT_PROTECTED_KEYS = {'password', 'privateKey'}
 
 
 class VariableKey:
@@ -151,12 +152,12 @@ def get_list_sub_key_string(index, key_string):
 
 def is_protected_key(key):
     """
-    Returns whether the given key is a protected key. ('password' or starts with underscore).
+    Returns whether the given key is a protected key. (a key that is protected by default or starts with an underscore).
 
     :param key: The key to check
     :return: True, if the given key is a protected key, otherwise False
     """
-    return (key == 'password') or (key.startswith('_'))
+    return (key in DEFAULT_PROTECTED_KEYS) or (key.startswith('_'))
 
 
 def _extract_variable_keys(variable_string, key_string, protected):
