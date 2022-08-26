@@ -204,7 +204,7 @@ def resolve_input_references(to_resolve, inputs_to_reference):
     """
     Resolves input references given in the string to_resolve by using the inputs_to_reference.
 
-    See http://www.commonwl.org/user_guide/06-params/index.html for more information.
+    See https://www.commonwl.org/user_guide/06-params/index.html for more information.
 
     Example:
     "$(inputs.my_file.nameroot).md" -> "filename.md"
