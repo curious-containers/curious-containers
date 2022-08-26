@@ -11,12 +11,12 @@ services:
   trustee:
     container_name: agency_trustee
     restart: "no"
-    image: bruno1996/cc-agency-trustee:0.0
+    image: bruno1996/cc-agency-trustee:0.1
     command: /usr/bin/uwsgi /opt/ccagency/privileged/ccagency-trustee.ini
   agency-controller:
     container_name: agency_controller
     restart: "no"
-    image: bruno1996/cc-agency-controller:0.0
+    image: bruno1996/cc-agency-controller:0.1
     command: /home/cc/ccagency-venv/bin/ccagency-controller
     depends_on:
       - mongodb
@@ -27,7 +27,7 @@ services:
   agency-broker:
     container_name: agency_broker
     restart: "no"
-    image: bruno1996/cc-agency-broker:0.0
+    image: bruno1996/cc-agency-broker:0.1
     command: /home/cc/start_broker.sh
     depends_on:
       - mongodb
