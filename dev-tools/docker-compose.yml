@@ -1,0 +1,47 @@
+version: "3.9"  # optional since v1.27.0
+services:
+  mongodb:
+    container_name: mongodb
+    image: bruno1996/agency_mongodb:0.0
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ccadmin
+      MONGO_INITDB_ROOT_PASSWORD: SECRET
+      MONGO_INITDB_DATABASE: ccagency
+  trustee:
+    container_name: agency_trustee
+    restart: "no"
+    image: bruno1996/cc-agency-trustee:0.1
+    command: /usr/bin/uwsgi /opt/ccagency/privileged/ccagency-trustee.ini
+  agency-controller:
+    container_name: agency_controller
+    restart: "no"
+    image: cc-agency-controller-tmp:0.0  # use temporary image here
+    command: /home/cc/ccagency-venv/bin/ccagency-controller
+    depends_on:
+      - mongodb
+    volumes:
+      - type: bind
+        source: //var/run/docker.sock
+        target: //var/run/docker.sock
+  agency-broker:
+    container_name: agency_broker
+    restart: "no"
+    image: cc-agency-broker-tmp:0.0  # use temporary image here
+    command: /home/cc/start_broker.sh
+    depends_on:
+      - mongodb
+      - agency-controller
+      - trustee
+    volumes:
+      - type: volume
+        source: broker_socket
+        target: /opt/ccagency/unprivileged
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - AGENCY_USER=agency_user
+      - AGENCY_PASSWORD=agency_password
+
+volumes:
+  broker_socket:
