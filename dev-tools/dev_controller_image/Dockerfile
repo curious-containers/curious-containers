@@ -1,5 +1,11 @@
 FROM bruno1996/cc-agency-controller:0.1
 
+ARG DOCKER_GID
+
+USER root
+
+RUN groupdel docker || true && groupadd --gid $DOCKER_GID docker && usermod -aG docker cc && newgrp docker
+
 USER cc
 
 # install new agency version from wheels
