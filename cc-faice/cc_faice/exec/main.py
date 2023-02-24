@@ -79,7 +79,6 @@ def main():
     parser = ArgumentParser(description=DESCRIPTION)
     attach_args(parser)
     args = parser.parse_args()
-
     result = run(**args.__dict__)
 
     if args.debug:
@@ -100,6 +99,7 @@ def _has_outputs(red_data):
     :return: True, if the given red_data contains outputs, otherwise False
     :rtype: bool
     """
+
     batches = red_data.get('batches')
     if batches is not None:
         for batch in batches:
@@ -132,6 +132,7 @@ def _check_execution_arguments(execution_engine, **arguments):
 
     :raise InvalidArgumentException: If an invalid argument was found
     """
+    print(type(arguments))
     allowed_arguments = ALLOWED_EXECUTION_ENGINE_ARGUMENTS[execution_engine]
     invalid_arguments = []
     for key, value in arguments.items():

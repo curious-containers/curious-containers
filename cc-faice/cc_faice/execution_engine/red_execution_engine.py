@@ -169,7 +169,6 @@ def get_gpu_devices(docker_manager, gpu_ids):
             raise InsufficientGPUError(
                 'GPU id "{}" was specified by cli argument, but no device with this id was found'.format(gpu_ids)
             )
-
     return gpu_devices
 
 
