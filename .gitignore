@@ -6,3 +6,4 @@ pip-wheel-metadata
 .pytest_cache
 outputs
 *.whl
+*.ipynb

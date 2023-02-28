@@ -18,36 +18,30 @@ cli:
       type: "File"
       outputBinding:
         glob: "output.txt"
-inputs:
-  item:
-    "C++"
-  input_file:
-    class: "File"
-    connector:
-      command: "red-connector-http"
-      access:
-        url: "https://www.stroustrup.com/C++.html"
-outputs:
-  output_file:
-    class: "File"
-    connector:
-      command: "red-connector-http"
-      access:
-        url: "https://encyb3haf7gch.x.pipedream.net"
+batches:
+  - inputs:
+      item:
+        "C++"
+      input_file:
+        class: "File"
+        connector:
+          command: "red-connector-http"
+          access:
+            url: "https://github.com/"
+    outputs:
+      output_file:
+        class: "File"
+        connector:
+          command: "red-connector-http"
+          access:
+            url: "https://github.com/"
 container:
   engine: "docker"
   settings:
     image:
-      url: "bruno1996/countitem:1.0"
+      url: "python:latest"
     ram: 256
-# execution:
-#   engine: "ccfaice"
-#   settings: {}
 execution:
-  engine: "ccagency"
-  settings:
-    access:
-      url: "https://souvemed-agency.f4.htw-berlin.de:443/cc"
-      auth:
-        username: "Bruno"
-        password: "{{agency_htw_souvemed_password}}"
+  engine: "ccfaice"
+  settings: {}
+
