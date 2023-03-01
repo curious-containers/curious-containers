@@ -132,7 +132,6 @@ def _check_execution_arguments(execution_engine, **arguments):
 
     :raise InvalidArgumentException: If an invalid argument was found
     """
-    print(type(arguments))
     allowed_arguments = ALLOWED_EXECUTION_ENGINE_ARGUMENTS[execution_engine]
     invalid_arguments = []
     for key, value in arguments.items():
