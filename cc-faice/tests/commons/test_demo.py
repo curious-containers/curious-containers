@@ -4,7 +4,7 @@ from cc_faice.exec.main import _has_outputs, _check_execution_arguments
 yaml = YAML(typ='safe')
 
 # Reading all the Red files
-def red_create(batch:bool,output:bool):
+def red_create(batch: bool, output: bool):
     """
     This fucntion creates a red file for testing pupose.
     :param batch: If the batch is required
@@ -37,5 +37,5 @@ def test_has_outputs():
     """
     Tests the _has_outputs function from cc_faice.exec.main for two red files. 
     """
-    assert not _has_outputs(red_create(batch=False,output=False)), 'Expected no outputs but found one output in hello_world.red'
-    assert  _has_outputs(red_create(batch=False,output=True)), 'Expected outputs but not found output in input_output.red'
+    assert not _has_outputs(red_create(batch= False, output= False)), 'Expected no outputs but found one output in hello_world.red'
+    assert  _has_outputs(red_create(batch= False, output= True)), 'Expected outputs but not found output in input_output.red'
