@@ -92,13 +92,19 @@ class DockerManager:
     def __init__(self):
         try:
             self._client = docker.from_env()
-            info = self._client.info()  # This raises a ConnectionError, if the docker socket was not found
+            # This raises a ConnectionError, if the docker socket was not found
+            info = self._client.info()
         except ConnectionError:
-            raise DockerException('Could not connect to docker socket. Is the docker daemon running?')
+            raise DockerException(
+                'Could not connect to docker socket. Is the docker daemon running?')
         except DockerException as e:
-            raise DockerException('Could not create docker client from environment.\n{}'.format(str(e)))
+            raise DockerException(
+                'Could not create docker client from environment.\n{}'.format(str(e)))
 
         self._runtimes = info.get('Runtimes')
+
+    def create_volume(self, name):
+        self._client.volumes.create(name='my_volume')
 
     def get_nvidia_docker_gpus(self):
         """
@@ -123,9 +129,12 @@ class DockerManager:
             image,
             ram,
             working_directory,
+            volumes,
             gpus=None,
             environment=None,
-            enable_fuse=False
+            enable_fuse=False,
+
+
     ):
         """
         Creates a docker container with the given arguments. This docker container is running endlessly until
@@ -162,7 +171,8 @@ class DockerManager:
 
         gpu_ids = None
         if gpus:
-            set_nvidia_environment_variables(environment, map(lambda gpu: gpu.device_id, gpus))
+            set_nvidia_environment_variables(
+                environment, map(lambda gpu: gpu.device_id, gpus))
             gpu_ids = [gpu.device_id for gpu in gpus]
 
         # enable fuse
@@ -176,9 +186,10 @@ class DockerManager:
         container = create_container_with_gpus(
             self._client,
             image,
-            command='/bin/sh',
+            command='/bin/bash',
             gpus=gpu_ids,
             available_runtimes=self._runtimes,
+            volumes=volumes,
             name=name,
             # user='1000:1000',
             working_dir=working_directory.as_posix(),
@@ -187,7 +198,8 @@ class DockerManager:
             environment=environment,
             cap_add=capabilities,
             devices=devices,
-            ulimits=[Ulimit(name='nofile', soft=NOFILE_LIMIT, hard=NOFILE_LIMIT)],
+            ulimits=[Ulimit(name='nofile', soft=NOFILE_LIMIT,
+                            hard=NOFILE_LIMIT)],
             # needed to run the container endlessly
             tty=True,
             stdin_open=True,

@@ -25,13 +25,21 @@ from red_val.red_types import InputType
 CONTAINER_OUTPUT_DIR = PurePosixPath('/cc/outputs')
 CONTAINER_INPUT_DIR = PurePosixPath('/cc/inputs')
 CONTAINER_AGENT_PATH = PurePosixPath('/cc/restricted_red_agent.py')
-CONTAINER_RESTRICTED_RED_FILE_PATH = PurePosixPath('/cc/restricted_red_file.json')
+CONTAINER_RESTRICTED_RED_FILE_PATH = PurePosixPath(
+    '/cc/restricted_red_file.json')
+CONTAINER_INPUTCONNECTOR_PATH = PurePosixPath('/cc/inputConnector.py')
+CONTAINER_INPUTCONNECTOR_FILE_PATH = PurePosixPath(
+    '/cc/inputConnector.json')
+CONTAINER_OUTCONNECTOR_PATH = PurePosixPath('/cc/outputConnector.py')
+CONTAINER_OUTPUTCONNECTOR_FILE_PATH = PurePosixPath(
+    '/cc/outputConnector.json')
 
 
 class RestrictedRedBatch:
     """
     Defines a restricted red batch. Wraps the dictionary data.
     """
+
     def __init__(self, data, stdout_stderr_specified_by_user):
         """
         Creates a new restricted red batch.
@@ -87,7 +95,8 @@ def convert_red_to_restricted_red(red_data):
         complete_batch_inputs(batch_inputs, cli_inputs)
 
         # resolve input references
-        resolved_cli_outputs = complete_input_references_in_outputs(cli_outputs, batch_inputs)
+        resolved_cli_outputs = complete_input_references_in_outputs(
+            cli_outputs, batch_inputs)
 
         # create restricted red batch
         restricted_red_batch = create_restricted_red_batch(
@@ -173,9 +182,11 @@ def complete_input_references_in_outputs(cli_outputs, inputs_to_reference):
         output_binding = output_value['outputBinding']
 
         try:
-            resolved_glob = resolve_input_references(output_binding['glob'], inputs_to_reference)
+            resolved_glob = resolve_input_references(
+                output_binding['glob'], inputs_to_reference)
         except InvalidInputReference as e:
-            raise InvalidInputReference('Invalid Input Reference for output key "{}":\n{}'.format(output_key, str(e)))
+            raise InvalidInputReference(
+                'Invalid Input Reference for output key "{}":\n{}'.format(output_key, str(e)))
 
         output_binding['glob'] = resolved_glob
 
@@ -207,7 +218,8 @@ def complete_batch_inputs(batch_inputs, cli_inputs):
         elif input_type.is_directory():
             if input_type.is_array():
                 for directory_element in batch_value:
-                    complete_directory_input_values(input_key, directory_element)
+                    complete_directory_input_values(
+                        input_key, directory_element)
             else:
                 complete_directory_input_values(input_key, batch_value)
 

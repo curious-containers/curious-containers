@@ -11,12 +11,12 @@ from enum import Enum
 from uuid import uuid4
 from pathlib import PurePosixPath, Path
 
-from cc_core.commons.docker_utils import create_batch_archive, retrieve_file_archive, get_first_tarfile_member
+from cc_core.commons.docker_utils import create_batch_archive, create_connector_archive, retrieve_file_archive, get_first_tarfile_member
 from cc_core.commons.engines import engine_validation
 from cc_core.commons.exceptions import brief_exception_text, exception_format, AgentError, JobExecutionError
 from cc_core.commons.gpu_info import get_gpu_requirements, match_gpus, InsufficientGPUError
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR, \
-    CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH, RestrictedRedBatch
+    CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH, RestrictedRedBatch, CONTAINER_INPUTCONNECTOR_FILE_PATH, CONTAINER_INPUTCONNECTOR_PATH, CONTAINER_OUTCONNECTOR_PATH, CONTAINER_OUTPUTCONNECTOR_FILE_PATH
 from cc_core.commons.red_secrets import get_secret_values
 
 from cc_faice.commons.docker import env_vars, DockerManager
@@ -27,6 +27,11 @@ DESCRIPTION = 'Run an experiment as described in a REDFILE with restricted red a
 PYTHON_INTERPRETER = 'python3'
 DEFAULT_STDOUT_HOST_FILE = 'stdout.txt'
 DEFAULT_STDERR_HOST_FILE = 'stderr.txt'
+
+
+class ConnectorType(Enum):
+    Input = 0
+    Output = 0
 
 
 class OutputMode(Enum):
@@ -94,11 +99,16 @@ def run(
         docker_manager = DockerManager()
 
         # gpus
-        gpus = get_gpus(docker_manager, red_data['container']['settings'].get('gpus'), gpu_ids)
+        gpus = get_gpus(
+            docker_manager, red_data['container']['settings'].get('gpus'), gpu_ids)
 
         if not disable_pull:
-            registry_auth = red_data['container']['settings']['image'].get('auth')
+            registry_auth = red_data['container']['settings']['image'].get(
+                'auth')
             docker_manager.pull(docker_image, auth=registry_auth)
+
+            docker_manager.pull(
+                'docker.io/facilex/firstrepo', auth=registry_auth)
 
         if len(restricted_red_batches) == 1:
             host_outdir = Path('outputs')
@@ -167,7 +177,8 @@ def get_gpu_devices(docker_manager, gpu_ids):
         # check for gpu_ids, that have no device
         if gpu_ids:
             raise InsufficientGPUError(
-                'GPU id "{}" was specified by cli argument, but no device with this id was found'.format(gpu_ids)
+                'GPU id "{}" was specified by cli argument, but no device with this id was found'.format(
+                    gpu_ids)
             )
     return gpu_devices
 
@@ -336,6 +347,27 @@ class ContainerExecutionResult:
         return self.further_execution_errors.as_list()
 
 
+def _fuse_workaround(container, docker_manager):
+    set_osx_fuse_permissions_command = [
+        'chmod',
+        'o+rw',
+        '/dev/fuse'
+    ]
+    osx_fuse_result = docker_manager.run_command(
+        container,
+        set_osx_fuse_permissions_command,
+        user='root',
+        work_dir='/'
+    )
+    if osx_fuse_result.return_code != 0:
+        raise JobExecutionError(
+            'Failed to set fuse permissions (exitcode: {}). Failed with the following message:\n{}\n{}'
+            .format(osx_fuse_result.return_code, osx_fuse_result.get_stdout(), osx_fuse_result.get_stderr())
+        )
+
+    return
+
+
 def run_restricted_red_batch(
         restricted_red_batch,
         docker_manager,
@@ -378,81 +410,118 @@ def run_restricted_red_batch(
 
     container_name = str(uuid4())
 
-    command = _create_restricted_red_agent_command(output_mode, disable_connector_validation)
+    executorCommand = _create_restricted_red_agent_command(
+        output_mode, disable_connector_validation)
+
+    inputConnectorCommand = _create_connector_command(ConnectorType.Input)
 
     is_mounting = define_is_mounting(restricted_red_batch.data, insecure)
+    environment = {
+        'CONNECTOR_HOST': 'http-connector-container'
+    }
 
-    container = docker_manager.create_container(
-        name=container_name,
+    input_connector_container = docker_manager.create_container(
         image=docker_image,
+        name='http-connector-container',
         working_directory=CONTAINER_OUTPUT_DIR,
         ram=ram,
+        volumes={
+            'my-volume': {
+                'bind': '/cc',
+                'mode': 'rw',
+            },
+        },
         gpus=gpus,
         environment=environment,
         enable_fuse=is_mounting,
     )
-
-    with create_batch_archive(restricted_red_batch.data) as restricted_red_archive:
-        docker_manager.put_archive(container, restricted_red_archive)
+    with create_connector_archive(restricted_red_batch.data['inputs'], "input") as connectorArchive:
+        docker_manager.put_archive(input_connector_container, connectorArchive)
 
     # hack to make fuse work under osx
     if is_mounting:
-        set_osx_fuse_permissions_command = [
-            'chmod',
-            'o+rw',
-            '/dev/fuse'
-        ]
-        osx_fuse_result = docker_manager.run_command(
-            container,
-            set_osx_fuse_permissions_command,
-            user='root',
-            work_dir='/'
-        )
-        if osx_fuse_result.return_code != 0:
-            raise JobExecutionError(
-               'Failed to set fuse permissions (exitcode: {}). Failed with the following message:\n{}\n{}'
-               .format(osx_fuse_result.return_code, osx_fuse_result.get_stdout(), osx_fuse_result.get_stderr())
-            )
+        _fuse_workaround(input_connector_container, docker_manager)
 
-    # run restricted red agent
-    agent_execution_result = docker_manager.run_command(container, command)
+    intputConnector_execution_result = docker_manager.run_command(
+        input_connector_container, inputConnectorCommand)
 
     further_errors = FurtherExecutionErrors()
 
-    restricted_red_agent_result = agent_execution_result.get_agent_result_dict()
+    intputConnector_result = intputConnector_execution_result.get_agent_result_dict()
 
-    abs_host_outdir = Path(os.path.abspath(str(host_outdir).format(batch_index=batch_index)))  # type: Path
-    if restricted_red_agent_result['state'] == 'succeeded':
-        state = ExecutionResultType.Succeeded
+    if intputConnector_result['state'] == 'succeeded':
+        input_connector_container.kill()
 
-        # handle stdout
-        if restricted_red_batch.stdout_specified_by_user():
-            _transfer_file(restricted_red_agent_result['process']['stdout'], container, abs_host_outdir)
+        container = docker_manager.create_container(
+            name=container_name,
+            image=docker_image,
+            working_directory=CONTAINER_OUTPUT_DIR,
+            ram=ram,
+            volumes={
+                'my-volume': {
+                    'bind': '/cc',
+                    'mode': 'rw',
+                },
+            },
+            gpus=gpus,
+            environment=environment,
+            enable_fuse=is_mounting,
+        )
 
-        # handle stderr
-        if restricted_red_batch.stderr_specified_by_user():
-            _transfer_file(restricted_red_agent_result['process']['stderr'], container, abs_host_outdir)
+        with create_batch_archive(restricted_red_batch.data) as restricted_red_archive:
+            docker_manager.put_archive(container, restricted_red_archive)
 
-        # create outputs directory
-        if output_mode == OutputMode.Directory:
-            _handle_directory_outputs(
-                abs_host_outdir,
-                restricted_red_agent_result['outputs'],
-                container
-            )
+        # hack to make fuse work under osx
+        if is_mounting:
+            _fuse_workaround(container, docker_manager)
+
+        # run restricted red agent
+        agent_execution_result = docker_manager.run_command(
+            container, executorCommand)
+
+        further_errors = FurtherExecutionErrors()
+
+        restricted_red_agent_result = agent_execution_result.get_agent_result_dict()
+
+        abs_host_outdir = Path(os.path.abspath(
+            str(host_outdir).format(batch_index=batch_index)))  # type: Path
+        if restricted_red_agent_result['state'] == 'succeeded':
+            state = ExecutionResultType.Succeeded
+
+            # handle stdout
+            if restricted_red_batch.stdout_specified_by_user():
+                _transfer_file(
+                    restricted_red_agent_result['process']['stdout'], container, abs_host_outdir)
+
+            # handle stderr
+            if restricted_red_batch.stderr_specified_by_user():
+                _transfer_file(
+                    restricted_red_agent_result['process']['stderr'], container, abs_host_outdir)
+
+            # create outputs directory
+            if output_mode == OutputMode.Directory:
+                _handle_directory_outputs(
+                    abs_host_outdir,
+                    restricted_red_agent_result['outputs'],
+                    container
+                )
+        else:
+            state = ExecutionResultType.Failed
+
+            # only create stdout/stderr, if user process was executed
+            if restricted_red_agent_result['process']['executed']:
+                errors_handling_stdout_stderr = _handle_stdout_stderr_on_failure(
+                    abs_host_outdir,
+                    restricted_red_batch,
+                    container
+                )
+                if errors_handling_stdout_stderr:
+                    further_errors.retrieve_stdout = errors_handling_stdout_stderr.get(
+                        'stdout')
+                    further_errors.retrieve_stderr = errors_handling_stdout_stderr.get(
+                        'stderr')
     else:
         state = ExecutionResultType.Failed
-
-        # only create stdout/stderr, if user process was executed
-        if restricted_red_agent_result['process']['executed']:
-            errors_handling_stdout_stderr = _handle_stdout_stderr_on_failure(
-                abs_host_outdir,
-                restricted_red_batch,
-                container
-            )
-            if errors_handling_stdout_stderr:
-                further_errors.retrieve_stdout = errors_handling_stdout_stderr.get('stdout')
-                further_errors.retrieve_stderr = errors_handling_stdout_stderr.get('stderr')
 
     # kill the /bin/sh container
     container.kill()
@@ -462,7 +531,7 @@ def run_restricted_red_batch(
 
     return ContainerExecutionResult(
         state,
-        command,
+        executorCommand,
         container_name,
         restricted_red_agent_result,
         agent_execution_result.get_stderr(),
@@ -519,7 +588,8 @@ def _transfer_file(container_path, container, host_outdir):
     except AgentError as e:
         raise AgentError(
             'Could not retrieve stdout file with path "{}" from docker container. '
-            'Failed with the following message:\n{}'.format(abs_container_path, str(e))
+            'Failed with the following message:\n{}'.format(
+                abs_container_path, str(e))
         )
 
 
@@ -551,7 +621,8 @@ def _handle_stdout_stderr_on_failure(host_outdir, restricted_red_batch, containe
 
     for out_err, index, default_name in stdout_stderr:
         # define container path (e.g. /cc/outputs/stdout.txt)
-        container_path = CONTAINER_OUTPUT_DIR / restricted_red_batch.data['cli'][out_err]
+        container_path = CONTAINER_OUTPUT_DIR / \
+            restricted_red_batch.data['cli'][out_err]
 
         # define host filename (e.g. stdout.txt)
         host_file_name = default_name
@@ -570,13 +641,15 @@ def _handle_stdout_stderr_on_failure(host_outdir, restricted_red_batch, containe
 
         except AgentError as e:
             errors[out_err] = 'Could not retrieve "{}" with path "{}" from docker container. ' \
-                              'Failed with the following message:\n{}'.format(out_err, container_path, str(e))
+                              'Failed with the following message:\n{}'.format(
+                                  out_err, container_path, str(e))
 
     return errors or None
 
 
 def define_is_mounting(restricted_red_batch, insecure):
-    mount_connectors = _get_restricted_red_batch_mount_keys(restricted_red_batch)
+    mount_connectors = _get_restricted_red_batch_mount_keys(
+        restricted_red_batch)
     if mount_connectors:
         if not insecure:
             raise Exception(
@@ -601,11 +674,22 @@ def _create_restricted_red_agent_command(output_mode, disable_connector_validati
     :return: A list of strings to execute inside the docker container.
     :rtype: List[str]
     """
-    command = [PYTHON_INTERPRETER, CONTAINER_AGENT_PATH.as_posix(), CONTAINER_RESTRICTED_RED_FILE_PATH.as_posix()]
+    command = [PYTHON_INTERPRETER, CONTAINER_AGENT_PATH.as_posix(
+    ), CONTAINER_RESTRICTED_RED_FILE_PATH.as_posix()]
 
     if output_mode == OutputMode.Connectors:
         command.append('--outputs')
     if disable_connector_validation:
         command.append('--disable-connector-validation')
 
+    return command
+
+
+def _create_connector_command(connectorType):
+    if (connectorType == ConnectorType.Input):
+        command = [PYTHON_INTERPRETER, CONTAINER_INPUTCONNECTOR_PATH.as_posix(
+        ), CONTAINER_INPUTCONNECTOR_FILE_PATH.as_posix()]
+    else:
+        command = [PYTHON_INTERPRETER, CONTAINER_OUTCONNECTOR_PATH.as_posix(
+        ), CONTAINER_OUTPUTCONNECTOR_FILE_PATH.as_posix()]
     return command

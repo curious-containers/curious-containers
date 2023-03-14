@@ -14,7 +14,8 @@ def cli_modes(script_name, title, description, modes, version=None):
 
     sub_parser = None
     for key, val in modes.items():
-        sub_parser = subparsers.add_parser(key, help=val['description'], add_help=False)
+        sub_parser = subparsers.add_parser(
+            key, help=val['description'], add_help=False)
 
     if len(sys.argv) < 2:
         parser.print_help()

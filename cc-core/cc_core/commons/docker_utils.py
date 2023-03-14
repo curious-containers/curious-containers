@@ -15,14 +15,15 @@ from docker.models.images import Image
 
 from cc_core.commons.engines import NVIDIA_DOCKER_RUNTIME
 from cc_core.commons.red_to_restricted_red import CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH,\
-    CONTAINER_OUTPUT_DIR, CONTAINER_INPUT_DIR
+    CONTAINER_OUTPUT_DIR, CONTAINER_INPUT_DIR, CONTAINER_INPUTCONNECTOR_FILE_PATH, CONTAINER_INPUTCONNECTOR_PATH, CONTAINER_OUTCONNECTOR_PATH, CONTAINER_OUTPUTCONNECTOR_FILE_PATH
 
-GPU_CAPABILITIES = [['gpu'], ['nvidia'], ['compute'], ['compat32'], ['graphics'], ['utility'], ['video'], ['display']]
+GPU_CAPABILITIES = [['gpu'], ['nvidia'], ['compute'], [
+    'compat32'], ['graphics'], ['utility'], ['video'], ['display']]
 GPU_QUERY_IMAGE = 'nvidia/cuda:8.0-runtime'
 DIRECTORY_PERMISSIONS = stat.S_IROTH | stat.S_IWOTH | stat.S_IXOTH
 
 
-def create_container_with_gpus(client, image, command, available_runtimes, gpus=None, environment=None, **kwargs):
+def create_container_with_gpus(client, image, command, available_runtimes, volumes, gpus=None, environment=None, **kwargs):
     """
     Creates a docker container with optional gpus, accessible by nvidia runtime or nvidia-container-toolkit.
 
@@ -57,7 +58,8 @@ def create_container_with_gpus(client, image, command, available_runtimes, gpus=
         if gpus:
             if environment is None:
                 environment = {}
-            environment['NVIDIA_VISIBLE_DEVICES'] = _get_nvidia_visible_devices_from_gpus(gpus)
+            environment['NVIDIA_VISIBLE_DEVICES'] = _get_nvidia_visible_devices_from_gpus(
+                gpus)
             kwargs['environment'] = environment
 
             if NVIDIA_DOCKER_RUNTIME in available_runtimes:
@@ -66,12 +68,15 @@ def create_container_with_gpus(client, image, command, available_runtimes, gpus=
             else:
                 # if nvidia runtime is not installed on this docker daemon, but gpus are required:
                 # try creation with device request
-                container = _create_with_nvidia_container_toolkit(client, image, command, gpus, kwargs)
+                container = _create_with_nvidia_container_toolkit(
+                    client, image, command, gpus, volumes=volumes, **kwargs)
         else:
-            container = client.containers.create(image, command, environment=environment, **kwargs)
+            container = client.containers.create(
+                image, command, environment=environment,  volumes=volumes, **kwargs)
     except ConnectionError as e:
         raise DockerException(
-            'Could not create docker container. Failed with the following ConnectionError:\n{}'.format(str(e))
+            'Could not create docker container. Failed with the following ConnectionError:\n{}'.format(
+                str(e))
         )
     return container
 
@@ -142,7 +147,8 @@ def _get_gpu_device_request(gpus):
             'DeviceIDs': [str(gpu) for gpu in gpus],
         }
 
-    raise TypeError('gpus should be the string "all" an int or a list, but found "{}"'.format(gpus))
+    raise TypeError(
+        'gpus should be the string "all" an int or a list, but found "{}"'.format(gpus))
 
 
 def _get_nvidia_visible_devices_from_gpus(gpus):
@@ -168,7 +174,8 @@ def _get_nvidia_visible_devices_from_gpus(gpus):
     elif isinstance(gpus, list):
         return ','.join([str(gpu_id) for gpu_id in gpus])
 
-    raise TypeError('gpus should be the string "all" an int or a list, but found "{}"'.format(gpus))
+    raise TypeError(
+        'gpus should be the string "all" an int or a list, but found "{}"'.format(gpus))
 
 
 def set_permissions_and_owner(tarinfo, permissions, uid=0, username='root'):
@@ -189,65 +196,89 @@ def set_permissions_and_owner(tarinfo, permissions, uid=0, username='root'):
 
 
 def create_batch_archive(restricted_red_data):
-    """
-    Creates a tar archive that can be put into a cc_core container to execute the restricted red agent.
-
-    This archive contains the restricted red agent, a restricted red file, the outputs-directory and the
-    inputs-directory.
-    The restricted red file is filled with the given restricted red data.
-    The outputs-directory is an empty directory, with name 'outputs'
-    The inputs-directory is an empty directory, with name 'inputs'
-    The tar archive and the restricted red file are always in memory and never stored on the host filesystem.
-
-    All files and directories are owned by root.
-    The restricted red agent has read and execution permissions for others.
-    The restricted red file has read permissions set for others.
-    The directories outputs and inputs have read, write and execute permissions set for others.
-
-    The resulting archive is:
-    /cc
-    |-- /restricted_red_agent.py
-    |-- /restricted_red_file.json
-    |-- /outputs/
-    |-- /inputs/
-
-    :param restricted_red_data: The data to put into the restricted red file of the returned archive
-    :type restricted_red_data: dict
-    :return: A tar archive containing the restricted red agent, a restricted red file, and input/output directories
-    :rtype: io.BytesIO or bytes
-    """
+    # create a buffer for the archive
     data_file = io.BytesIO()
-    tar_file = tarfile.open(mode='w', fileobj=data_file)
 
-    # add restricted red agent
-    agent_tarinfo = tar_file.gettarinfo(
-        str(get_restricted_red_agent_host_path()),
-        arcname=CONTAINER_AGENT_PATH.as_posix()
-    )
-    set_permissions_and_owner(agent_tarinfo, stat.S_IROTH | stat.S_IXOTH)
-    with get_restricted_red_agent_host_path().open('rb') as agent_file:
-        tar_file.addfile(agent_tarinfo, agent_file)
+    # create a tar archive object and set permissions
+    with tarfile.open(mode='w', fileobj=data_file) as tar_file:
+        # add restricted red agent to the archive
+        agent_path = get_restricted_red_agent_host_path()
+        agent_tarinfo = tar_file.gettarinfo(
+            str(agent_path), arcname=CONTAINER_AGENT_PATH.as_posix())
+        set_permissions_and_owner(agent_tarinfo, stat.S_IROTH | stat.S_IXOTH)
+        with agent_path.open('rb') as agent_file:
+            tar_file.addfile(agent_tarinfo, agent_file)
 
-    # add restricted red file
-    restricted_red_batch_content = json.dumps(restricted_red_data).encode('utf-8')
-    # see https://bugs.python.org/issue22208 for more information
-    restricted_red_batch_tarinfo = tarfile.TarInfo(CONTAINER_RESTRICTED_RED_FILE_PATH.as_posix())
-    restricted_red_batch_tarinfo.size = len(restricted_red_batch_content)
-    set_permissions_and_owner(restricted_red_batch_tarinfo, stat.S_IROTH)
-    tar_file.addfile(restricted_red_batch_tarinfo, io.BytesIO(restricted_red_batch_content))
+        # add restricted red file to the archive
+        restricted_red_batch_content = json.dumps(
+            restricted_red_data).encode('utf-8')
+        restricted_red_batch_tarinfo = tarfile.TarInfo(
+            CONTAINER_RESTRICTED_RED_FILE_PATH.as_posix())
+        restricted_red_batch_tarinfo.size = len(restricted_red_batch_content)
+        set_permissions_and_owner(restricted_red_batch_tarinfo, stat.S_IROTH)
+        tar_file.addfile(restricted_red_batch_tarinfo,
+                         io.BytesIO(restricted_red_batch_content))
 
-    # add outputs directory
-    output_directory_tarinfo = create_directory_tarinfo(CONTAINER_OUTPUT_DIR, permissions=DIRECTORY_PERMISSIONS)
-    tar_file.addfile(output_directory_tarinfo)
+        # add outputs directory to the archive
+        output_directory_tarinfo = create_directory_tarinfo(
+            CONTAINER_OUTPUT_DIR, permissions=DIRECTORY_PERMISSIONS)
+        tar_file.addfile(output_directory_tarinfo)
 
-    # add inputs_directory
-    input_directory_tarinfo = create_directory_tarinfo(CONTAINER_INPUT_DIR, permissions=DIRECTORY_PERMISSIONS)
-    tar_file.addfile(input_directory_tarinfo)
+        # add inputs directory to the archive
+        input_directory_tarinfo = create_directory_tarinfo(
+            CONTAINER_INPUT_DIR, permissions=DIRECTORY_PERMISSIONS)
+        tar_file.addfile(input_directory_tarinfo)
 
-    # close file
-    tar_file.close()
+    # reset the buffer and return the archive
     data_file.seek(0)
+    return data_file
 
+
+def create_connector_archive(restricted_red_data, connectorType):
+    if (connectorType == "input"):
+        connectorAgent = CONTAINER_INPUTCONNECTOR_PATH
+        connectorFile = CONTAINER_INPUTCONNECTOR_FILE_PATH
+        agent_path = get_inputConnector_host_path()
+
+    else:
+        connectorAgent = CONTAINER_OUTCONNECTOR_PATH
+        connectorFile = CONTAINER_OUTPUTCONNECTOR_FILE_PATH
+        agent_path = get_restricted_red_agent_host_path()
+
+    # create a buffer for the archive
+    data_file = io.BytesIO()
+
+    # create a tar archive object and set permissions
+    with tarfile.open(mode='w', fileobj=data_file) as tar_file:
+        # add restricted red agent to the archive
+        agent_tarinfo = tar_file.gettarinfo(
+            str(agent_path), arcname=connectorAgent.as_posix())
+        set_permissions_and_owner(agent_tarinfo, stat.S_IROTH | stat.S_IXOTH)
+        with agent_path.open('rb') as agent_file:
+            tar_file.addfile(agent_tarinfo, agent_file)
+
+        # add restricted red file to the archive
+        restricted_red_batch_content = json.dumps(
+            restricted_red_data).encode('utf-8')
+        restricted_red_batch_tarinfo = tarfile.TarInfo(
+            connectorFile.as_posix())
+        restricted_red_batch_tarinfo.size = len(restricted_red_batch_content)
+        set_permissions_and_owner(restricted_red_batch_tarinfo, stat.S_IROTH)
+        tar_file.addfile(restricted_red_batch_tarinfo,
+                         io.BytesIO(restricted_red_batch_content))
+
+        # add outputs directory to the archive
+        output_directory_tarinfo = create_directory_tarinfo(
+            CONTAINER_OUTPUT_DIR, permissions=DIRECTORY_PERMISSIONS)
+        tar_file.addfile(output_directory_tarinfo)
+
+        # add inputs directory to the archive
+        input_directory_tarinfo = create_directory_tarinfo(
+            CONTAINER_INPUT_DIR, permissions=DIRECTORY_PERMISSIONS)
+        tar_file.addfile(input_directory_tarinfo)
+
+    # reset the buffer and return the archive
+    data_file.seek(0)
     return data_file
 
 
@@ -267,7 +298,8 @@ def create_directory_tarinfo(directory_name, permissions, owner_id=0, owner_name
     """
     directory_tarinfo = tarfile.TarInfo(directory_name.as_posix())
     directory_tarinfo.type = tarfile.DIRTYPE
-    set_permissions_and_owner(directory_tarinfo, permissions, owner_id, owner_name)
+    set_permissions_and_owner(
+        directory_tarinfo, permissions, owner_id, owner_name)
     return directory_tarinfo
 
 
@@ -280,6 +312,16 @@ def get_restricted_red_agent_host_path():
     """
     import cc_core.agent.restricted_red.__main__ as restricted_red_main
     return Path(restricted_red_main.__file__)
+
+
+def get_inputConnector_host_path():
+    import cc_core.agent.connectors.inputConnector.__main__ as restricted_red_main
+    return Path(restricted_red_main.__file__)
+
+
+# def get_outputConnector_host_path():
+#     import cc_core.agent.connectors.outputConnector.__main__ as restricted_red_main
+#     return Path(restricted_red_main.__file__)
 
 
 def image_to_str(image):
@@ -346,7 +388,8 @@ def detect_nvidia_docker_gpus(client, runtimes):
             pass
         raise DockerException(
             'Could not query gpus. Make sure the nvidia-runtime or nvidia-container-toolkit is configured on '
-            'the docker host. Container failed with following message:\n{}'.format(str(e))
+            'the docker host. Container failed with following message:\n{}'.format(
+                str(e))
         )
 
     gpus = []
@@ -420,9 +463,11 @@ class ContainerFileBitsWrapper(io.RawIOBase):
         """
         super().__init__()
         self._bits = bits
-        self._chunk_offset = 0  # the offset of the first bit in the current _chunk, in respect to the hole stream
+        # the offset of the first bit in the current _chunk, in respect to the hole stream
+        self._chunk_offset = 0
         self._chunk = bytes(0)  # The current chunk
-        self._read_offset = 0  # The current read offset in the chunk, in respect to the hole stream
+        # The current read offset in the chunk, in respect to the hole stream
+        self._read_offset = 0
 
     def _read_next(self):
         chunk_len = len(self._chunk)
@@ -456,7 +501,8 @@ class ContainerFileBitsWrapper(io.RawIOBase):
                 break
             tmp_chunk += self._chunk
 
-        result = tmp_chunk[self._read_offset - tmp_chunk_offset:end - tmp_chunk_offset]
+        result = tmp_chunk[self._read_offset -
+                           tmp_chunk_offset:end - tmp_chunk_offset]
         self._read_offset = end
         return result
 
@@ -464,7 +510,8 @@ class ContainerFileBitsWrapper(io.RawIOBase):
         return self._read_offset
 
     def write(self, size):
-        raise io.UnsupportedOperation('Can not write to ContainerFileBitsWrapper')
+        raise io.UnsupportedOperation(
+            'Can not write to ContainerFileBitsWrapper')
 
     def close(self):
         self._bits = None
@@ -490,4 +537,5 @@ class ContainerFileBitsWrapper(io.RawIOBase):
         return self._read_offset
 
     def fileno(self):
-        raise OSError('ContainerFileBitsWrapper does not use a underlying file object.')
+        raise OSError(
+            'ContainerFileBitsWrapper does not use a underlying file object.')
