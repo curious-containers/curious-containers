@@ -75,10 +75,7 @@ def run(args):
     connector_manager = ConnectorManager()
     try:
         restricted_red_location = args.restricted_red_file
-        if args.outputs:
-            output_mode = OutputMode.Connectors
-        else:
-            output_mode = OutputMode.Directory
+        output_mode = OutputMode.Connectors
 
         restricted_red_data = get_restricted_red_data(restricted_red_location)
 
@@ -99,10 +96,6 @@ def run(args):
         if not args.disable_connector_validation:
             connector_manager.validate_connectors(
                 validate_outputs=(output_mode == OutputMode.Connectors))
-
-        # check output files/directories
-        connector_manager.check_outputs()
-        result['outputs'] = connector_manager.outputs_to_dict()
 
         # send files and directories
         if output_mode == OutputMode.Connectors:
@@ -192,35 +185,23 @@ class ConnectorManager:
         :param cli_stdout: The value of the stdout cli description (the path to the stdout file)
         :param cli_stderr: The value of the stderr cli description (the path to the stderr file)
         """
-        if output_mode == OutputMode.Connectors:
-            for output_key, output_value in outputs.items():
-                cli_output_value = cli_outputs.get(output_key)
-                if cli_output_value is None:
-                    raise KeyError('Could not find output key "{}" in cli description, but was given in "outputs".'
-                                   .format(output_key))
 
-                runner = create_output_connector_runner(
-                    output_key,
-                    output_value,
-                    cli_output_value,
-                    self._connector_cli_version_cache,
-                    cli_stdout,
-                    cli_stderr
-                )
+        for output_key, output_value in outputs.items():
+            cli_output_value = cli_outputs.get(output_key)
+            if cli_output_value is None:
+                raise KeyError('Could not find output key "{}" in cli description, but was given in "outputs".'
+                               .format(output_key))
 
-                self._output_runners.append(runner)
-
-        for cli_output_key, cli_output_value in cli_outputs.items():
-            output_value = outputs.get(cli_output_key)
-            runner = create_cli_output_runner(
-                cli_output_key,
-                cli_output_value,
+            runner = create_output_connector_runner(
+                output_key,
                 output_value,
+                cli_output_value,
+                self._connector_cli_version_cache,
                 cli_stdout,
                 cli_stderr
             )
 
-            self._cli_output_runners.append(runner)
+            self._output_runners.append(runner)
 
     def validate_connectors(self, validate_outputs):
         """

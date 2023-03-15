@@ -414,6 +414,8 @@ def run_restricted_red_batch(
         output_mode, disable_connector_validation)
 
     inputConnectorCommand = _create_connector_command(ConnectorType.Input)
+    outputConnectorCommand = _create_connector_command(ConnectorType.Output)
+    output_connector_container = None
 
     is_mounting = define_is_mounting(restricted_red_batch.data, insecure)
     environment = {
@@ -520,6 +522,43 @@ def run_restricted_red_batch(
                         'stdout')
                     further_errors.retrieve_stderr = errors_handling_stdout_stderr.get(
                         'stderr')
+        if (restricted_red_batch.data.get('outputs')):
+            output_connector_container = docker_manager.create_container(
+                image=docker_image,
+                name='http-connector-container',
+                working_directory=CONTAINER_OUTPUT_DIR,
+                ram=ram,
+                volumes={
+                    'my-volume': {
+                        'bind': '/cc',
+                        'mode': 'rw',
+                    },
+                },
+                gpus=gpus,
+                environment=environment,
+                enable_fuse=is_mounting,
+            )
+            outputConnectorData = {
+                'cli': restricted_red_batch.data['cli'], 'outputs': restricted_red_batch.data['outputs']}
+            with create_connector_archive(outputConnectorData, "output") as connectorArchive:
+                docker_manager.put_archive(
+                    output_connector_container, connectorArchive)
+
+            # hack to make fuse work under osx
+            if is_mounting:
+                _fuse_workaround(output_connector_container, docker_manager)
+
+            outputConnector_execution_result = docker_manager.run_command(
+                output_connector_container, outputConnectorCommand)
+
+            further_errors = FurtherExecutionErrors()
+
+            outputConnector_result = outputConnector_execution_result.get_agent_result_dict()
+
+            if outputConnector_result['state'] != 'succeeded':
+                state = ExecutionResultType.Failed
+
+            output_connector_container.kill()
     else:
         state = ExecutionResultType.Failed
 
@@ -527,7 +566,10 @@ def run_restricted_red_batch(
     container.kill()
 
     if not leave_container:
-        container.remove()
+        container.remove(force=True, v=True)
+        input_connector_container.remove(force=True, v=True)
+        if output_connector_container is not None:
+            output_connector_container.remove(force=True, v=True)
 
     return ContainerExecutionResult(
         state,

@@ -10,6 +10,9 @@ from cc_core.agent.restricted_red.__main__ import DESCRIPTION as RESTRICTED_RED_
 from cc_core.agent.connectors.inputConnector.__main__ import main as intputConnectorMain
 from cc_core.agent.connectors.inputConnector.__main__ import DESCRIPTION as INPUTCONNECTORDESCRIPTION
 
+from cc_core.agent.connectors.outputConnector.__main__ import main as outputConnectorMain
+from cc_core.agent.connectors.outputConnector.__main__ import DESCRIPTION as OUTPUTCONNECTORDESCRIPTION
+
 SCRIPT_NAME = 'ccagent'
 
 DESCRIPTION = 'CC-Agent Copyright (C) 2018  Christoph Jansen. This software is distributed under the AGPL-3.0 ' \
@@ -19,7 +22,9 @@ MODES = OrderedDict([
     ('inputConnector', {'main': intputConnectorMain,
                         'description': INPUTCONNECTORDESCRIPTION})
     ('restricted_red', {'main': restricted_red_main,
-     'description': RESTRICTED_RED_DESCRIPTION})
+     'description': RESTRICTED_RED_DESCRIPTION}),
+    ('outputConnector', {'main': outputConnectorMain,
+                         'description': OUTPUTCONNECTORDESCRIPTION})
 ])
 
 

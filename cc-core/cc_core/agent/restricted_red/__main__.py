@@ -76,17 +76,9 @@ def run(args):
     connector_manager = ConnectorManager()
     try:
         restricted_red_location = args.restricted_red_file
-        if args.outputs:
-            output_mode = OutputMode.Connectors
-        else:
-            output_mode = OutputMode.Directory
+        output_mode = OutputMode.Directory
 
         restricted_red_data = get_restricted_red_data(restricted_red_location)
-
-        if output_mode == OutputMode.Connectors and 'outputs' not in restricted_red_data:
-            raise ExecutionError(
-                '--outputs/-o argument is set but no outputs section is defined in RESTRICTED_RED_FILE.'
-            )
 
         # validate base_command and build command
         base_command = restricted_red_data.get('command')
@@ -104,10 +96,6 @@ def run(args):
 
         connector_manager.import_output_connectors(
             outputs, cli_outputs, output_mode, cli_stdout, cli_stderr)
-
-        if not args.disable_connector_validation:
-            connector_manager.validate_connectors(
-                validate_outputs=(output_mode == OutputMode.Connectors))
 
         # execute command
         try:
@@ -127,10 +115,6 @@ def run(args):
         # check output files/directories
         connector_manager.check_outputs()
         result['outputs'] = connector_manager.outputs_to_dict()
-
-        # send files and directories
-        if output_mode == OutputMode.Connectors:
-            connector_manager.send_connectors()
 
     except Exception as e:
         print_exception(e)
@@ -1639,23 +1623,6 @@ class ConnectorManager:
         :param cli_stdout: The value of the stdout cli description (the path to the stdout file)
         :param cli_stderr: The value of the stderr cli description (the path to the stderr file)
         """
-        if output_mode == OutputMode.Connectors:
-            for output_key, output_value in outputs.items():
-                cli_output_value = cli_outputs.get(output_key)
-                if cli_output_value is None:
-                    raise KeyError('Could not find output key "{}" in cli description, but was given in "outputs".'
-                                   .format(output_key))
-
-                runner = create_output_connector_runner(
-                    output_key,
-                    output_value,
-                    cli_output_value,
-                    self._connector_cli_version_cache,
-                    cli_stdout,
-                    cli_stderr
-                )
-
-                self._output_runners.append(runner)
 
         for cli_output_key, cli_output_value in cli_outputs.items():
             output_value = outputs.get(cli_output_key)

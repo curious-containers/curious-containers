@@ -243,7 +243,7 @@ def create_connector_archive(restricted_red_data, connectorType):
     else:
         connectorAgent = CONTAINER_OUTCONNECTOR_PATH
         connectorFile = CONTAINER_OUTPUTCONNECTOR_FILE_PATH
-        agent_path = get_restricted_red_agent_host_path()
+        agent_path = get_outputConnector_host_path()
 
     # create a buffer for the archive
     data_file = io.BytesIO()
@@ -315,13 +315,13 @@ def get_restricted_red_agent_host_path():
 
 
 def get_inputConnector_host_path():
-    import cc_core.agent.connectors.inputConnector.__main__ as restricted_red_main
-    return Path(restricted_red_main.__file__)
+    import cc_core.agent.connectors.inputConnector.__main__ as intputConnector_main
+    return Path(intputConnector_main.__file__)
 
 
-# def get_outputConnector_host_path():
-#     import cc_core.agent.connectors.outputConnector.__main__ as restricted_red_main
-#     return Path(restricted_red_main.__file__)
+def get_outputConnector_host_path():
+    import cc_core.agent.connectors.outputConnector.__main__ as outputConnector_main
+    return Path(outputConnector_main.__file__)
 
 
 def image_to_str(image):
