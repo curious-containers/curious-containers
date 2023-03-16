@@ -1,7 +1,8 @@
-from ruamel.yaml import YAML
+from ruamel.yaml import YAML, YAMLError
 import pytest
 from cc_core.commons.exceptions import InvalidExecutionEngineArgumentException
 from cc_faice.exec.main import _has_outputs, _check_execution_arguments
+from cc_core.commons.files import load_and_read
 
 yaml = YAML(typ='safe')
 
@@ -70,3 +71,14 @@ def test_check_execution_arguments():
         _check_execution_arguments('ccagency',insecure= True)    
     with pytest.raises(InvalidExecutionEngineArgumentException): 
         _check_execution_arguments('ccagency',disable_pull= True)    
+
+
+def test_load_and_read():
+    """
+    Tests the _load_and_read function from cc_core.commons.files  
+    """
+    load_and_read(location='tests/red_files/initial.red', var_name= "initial")
+    with pytest.raises(YAMLError):
+        load_and_read(location='tests/red_files/for_test_load_and_read.txt', var_name= "initial")
+    with pytest.raises(OSError):
+        load_and_read(location='test/red_files/initial.red', var_name= "initial")
