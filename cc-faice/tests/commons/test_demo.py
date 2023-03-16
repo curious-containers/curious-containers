@@ -49,13 +49,6 @@ def test_has_outputs():
     assert  _has_outputs(red_create(batch= False, output= True)), 'Expected outputs but not found output in input_output.red'
 
 
-ALLOWED_EXECUTION_ENGINE_ARGUMENTS = {
-    'ccfaice': [
-        'preserve_environment', 'disable_pull', 'leave_container', 'insecure', 'gpu_ids', 'disable_connector_validation'
-    ],
-    'ccagency': ['disable_retry', 'disable_connector_validation']
-}
-
 def test_check_execution_arguments():
     """
     Tests the _check_execution_arguments function from cc_faice.exec.main. 
