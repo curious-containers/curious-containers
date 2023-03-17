@@ -5,3 +5,5 @@ pip-wheel-metadata
 *.egg-info
 .pytest_cache
 outputs
+*.whl
+*.ipynb

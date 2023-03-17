@@ -12,6 +12,14 @@ if [ "$(basename $PWD)" != "curious-containers" ]; then
 	exit 1
 fi
 
+if getent group docker > /dev/null; then
+	docker_gid=$(getent group docker | cut -d: -f3)
+	echo "found docker gid: $docker_gid"
+else
+	echo "ERROR: no docker group configured"
+	exit 1
+fi
+
 # build wheels for cc-agency cc-core and red-val and copy to dev-tools/dev_controller_image and dev-tools/dev_broker_images
 echo "- building wheels for"
 
@@ -41,5 +49,5 @@ rm -v ./*.whl  # remove wheels for future attempts
 # build dev controller images
 echo "  - controller"
 cd ../dev_controller_image
-docker build --no-cache -t cc-agency-controller-tmp:0.0 .
+docker build --no-cache --build-arg DOCKER_GID="$docker_gid" -t cc-agency-controller-tmp:0.0 .
 rm -v ./*.whl  # remove wheels for future attempts
