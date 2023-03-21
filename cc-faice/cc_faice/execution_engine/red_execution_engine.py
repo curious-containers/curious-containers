@@ -21,6 +21,7 @@ from cc_core.commons.red_secrets import get_secret_values
 
 from cc_faice.commons.docker import env_vars, DockerManager
 from red_val.red_validation import red_validation
+from .preparation import prepare_execution
 
 DESCRIPTION = 'Run an experiment as described in a REDFILE with restricted red agent in a docker container.'
 
@@ -453,6 +454,21 @@ def run_restricted_red_batch(
 
     if intputConnector_result['state'] == 'succeeded':
         input_connector_container.kill()
+        result = {
+            'command': None,
+            'process': {
+                'returnCode': None,
+                'executed': False,
+                'stdout': None,
+                'stderr': None
+            },
+            'debugInfo': None,
+            'outputs': None,
+            'state': 'succeeded'
+        }
+
+        (command, cli_stdout, cli_stderr) = prepare_execution(
+            restricted_red_batch.data)
 
         container = docker_manager.create_container(
             name=container_name,
@@ -470,20 +486,24 @@ def run_restricted_red_batch(
             enable_fuse=is_mounting,
         )
 
-        with create_batch_archive(restricted_red_batch.data) as restricted_red_archive:
-            docker_manager.put_archive(container, restricted_red_archive)
+        # with create_batch_archive(restricted_red_batch.data) as restricted_red_archive:
+        #     docker_manager.put_archive(container, restricted_red_archive)
 
         # hack to make fuse work under osx
         if is_mounting:
             _fuse_workaround(container, docker_manager)
 
+        execution_result = docker_manager.run_command(
+            container,
+            command
+        )
         # run restricted red agent
-        agent_execution_result = docker_manager.run_command(
-            container, executorCommand)
+        # agent_execution_result = docker_manager.run_command(
+        #     container, executorCommand)
 
         further_errors = FurtherExecutionErrors()
 
-        restricted_red_agent_result = agent_execution_result.get_agent_result_dict()
+        restricted_red_agent_result = execution_result.get_agent_result_dict()
 
         abs_host_outdir = Path(os.path.abspath(
             str(host_outdir).format(batch_index=batch_index)))  # type: Path
