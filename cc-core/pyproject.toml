@@ -16,4 +16,4 @@ docker = "^6.0"
 red-val = "~9.1"
 
 [tool.poetry.dev-dependencies]
-pytest = "^7.0"
+pytest = "^7.2"
