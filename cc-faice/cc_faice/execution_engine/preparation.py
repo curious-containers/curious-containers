@@ -22,28 +22,6 @@ class OutputMode(enum.Enum):
     Directory = 1
 
 
-def prepare_execution(restricted_red_data):
-    connector_manager = ConnectorManager()
-    output_mode = OutputMode.Directory
-
-    base_command = restricted_red_data.get('command')
-    _validate_command(base_command)
-    cli_arguments = get_cli_arguments(restricted_red_data['cli']['inputs'])
-    command = generate_command(
-        base_command, cli_arguments, restricted_red_data)
-
-    outputs = restricted_red_data.get('outputs', {})
-    cli = restricted_red_data.get('cli', {})
-    cli_outputs = cli.get('outputs', {})
-    cli_stdout = cli.get('stdout')
-    cli_stderr = cli.get('stderr')
-
-    connector_manager.import_output_connectors(
-        outputs, cli_outputs, output_mode, cli_stdout, cli_stderr)
-
-    return (command, cli_stdout, cli_stderr)
-
-
 def _format_exception(exception):
     return '[{}]\n{}\n'.format(type(exception).__name__, str(exception))
 
@@ -154,7 +132,7 @@ class ConnectorManager:
 
         return inputs_dict
 
-    def outputs_to_dict(self):
+    def outputs_to_dict(self, docker_manager, container):
         """
         Translates the imported output connectors into a dictionary.
 
@@ -164,18 +142,18 @@ class ConnectorManager:
 
         for output_runner in self._cli_output_runners:
             outputs_dict[output_runner.get_output_key()
-                         ] = output_runner.to_dict()
+                         ] = output_runner.to_dict(docker_manager, container)
 
         return outputs_dict
 
-    def check_outputs(self):
+    def check_outputs(self, docker_manager, container):
         """
         Checks if all output files/directories are present relative to the given working directory
 
         :raise ConnectorError: If an output file/directory could not be found
         """
         for runner in self._cli_output_runners:
-            runner.check_output()
+            runner.check_output(docker_manager, container)
 
     def umount_connectors(self):
         """
@@ -191,6 +169,36 @@ class ConnectorManager:
                 errors.append(e)
 
         return errors
+
+
+connector_manager = ConnectorManager()
+
+
+def outputs(docker_manager, container):
+    global connector_manager
+    connector_manager.check_outputs(docker_manager, container)
+    return connector_manager.outputs_to_dict(docker_manager, container)
+
+
+def prepare_execution(restricted_red_data):
+    output_mode = OutputMode.Directory
+
+    base_command = restricted_red_data.get('command')
+    _validate_command(base_command)
+    cli_arguments = get_cli_arguments(restricted_red_data['cli']['inputs'])
+    command = generate_command(
+        base_command, cli_arguments, restricted_red_data)
+
+    outputs = restricted_red_data.get('outputs', {})
+    cli = restricted_red_data.get('cli', {})
+    cli_outputs = cli.get('outputs', {})
+    cli_stdout = cli.get('stdout')
+    cli_stderr = cli.get('stderr')
+
+    connector_manager.import_output_connectors(
+        outputs, cli_outputs, output_mode, cli_stdout, cli_stderr)
+
+    return (command, cli_stdout, cli_stderr)
 
 
 def create_cli_output_runner(cli_output_key, cli_output_value, output_value=None, cli_stdout=None, cli_stderr=None):
@@ -356,7 +364,7 @@ class CliOutputRunner:
     def get_output_key(self):
         return self._output_key
 
-    def to_dict(self):
+    def to_dict(self, docker_manager, container):
         """
         Returns a dictionary representing this output file
 
@@ -368,7 +376,7 @@ class CliOutputRunner:
         }
 
         paths = _resolve_glob_pattern(
-            self._glob_pattern, self._output_class.connector_type)
+            self._glob_pattern, docker_manager, container, self._output_class.connector_type)
 
         if len(paths) == 0:
             dict_representation['path'] = None
@@ -385,7 +393,7 @@ class CliOutputRunner:
 
         return dict_representation
 
-    def check_output(self):
+    def check_output(self, docker_manager, container):
         """
         Checks if the corresponding output is present in the working directory.
 
@@ -393,6 +401,8 @@ class CliOutputRunner:
         """
         glob_result = _resolve_glob_pattern(
             self._glob_pattern,
+            docker_manager,
+            container,
             self._output_class.connector_type
         )
 
@@ -530,26 +540,7 @@ def directory_listing_content_check(directory_path, listing):
     return None
 
 
-class OutputConnectorType(enum.Enum):
-    File = 0
-    Directory = 1
-    stdout = 2
-    stderr = 3
-
-    @staticmethod
-    def get_list():
-        """
-        Returns a list containing all variants as string
-
-        :rtype: List[str]
-        """
-        result = []
-        for ct in OutputConnectorType:
-            result.append(ct.name)
-        return result
-
-
-def _resolve_glob_pattern(glob_pattern, connector_type=None):
+def _resolve_glob_pattern(glob_pattern, docker_manager, container, connector_type=None):
     """
     Tries to resolve the given glob_pattern.
 
@@ -558,11 +549,20 @@ def _resolve_glob_pattern(glob_pattern, connector_type=None):
     :return: the resolved glob_pattern as list of strings
     :rtype: List[str]
     """
-    glob_result = glob.glob(os.path.abspath(glob_pattern))
+    glob_pattern = 'out.txt'
+
+    command = f'python3 -c "import glob, os; print(glob.glob(os.path.abspath(\'{glob_pattern}\')))"'
+    execution_result = docker_manager.run_command(
+        container, command)._stdout
+
+    execution_result = execution_result.strip().lstrip(
+        "[").rstrip("]").replace("'", "")
+    glob_result = [execution_result]
     if connector_type == OutputConnectorType.File:
-        glob_result = [f for f in glob_result if os.path.isfile(f)]
+        glob_result = [f for f in glob_result if not os.path.splitext(f)[
+            1] == '']
     elif connector_type == OutputConnectorType.Directory:
-        glob_result = [f for f in glob_result if os.path.isdir(f)]
+        glob_result = [f for f in glob_result if os.path.splitext(f)[1] == '']
     return glob_result
 
 

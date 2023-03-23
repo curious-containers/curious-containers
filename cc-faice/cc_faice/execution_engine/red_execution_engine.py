@@ -21,7 +21,7 @@ from cc_core.commons.red_secrets import get_secret_values
 
 from cc_faice.commons.docker import env_vars, DockerManager
 from red_val.red_validation import red_validation
-from .preparation import prepare_execution
+from .preparation import prepare_execution, outputs
 
 DESCRIPTION = 'Run an experiment as described in a REDFILE with restricted red agent in a docker container.'
 
@@ -500,7 +500,7 @@ def run_restricted_red_batch(
         # run restricted red agent
         # agent_execution_result = docker_manager.run_command(
         #     container, executorCommand)
-
+        outputs_result = outputs(docker_manager, container)
         further_errors = FurtherExecutionErrors()
 
         restricted_red_agent_result = execution_result.get_agent_result_dict()
