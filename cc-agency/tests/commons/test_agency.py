@@ -10,8 +10,8 @@ def test_encode_and_decode_authentication_cookie():
     matches the
     original data provided.
     """
-    data = ("root","token") 
-    encoded_data = "cm9vdA==:token" 
+    data = ("root","token")
+    encoded_data = "cm9vdA==:token"
     decoded_data = data
     assert encode_authentication_cookie("root","token") == encoded_data
     assert decode_authentication_cookie(encoded_data) == decoded_data
