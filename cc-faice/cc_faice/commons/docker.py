@@ -61,6 +61,9 @@ class AgentExecutionResult:
 
         :raise AgentError: If the stdout of the agent is not valid json
         """
+        if self._stdout is None:
+            return
+        
         if self._parsed_stdout is None:
             try:
                 self._parsed_stdout = json.loads(self._stdout)
@@ -102,9 +105,6 @@ class DockerManager:
                 'Could not create docker client from environment.\n{}'.format(str(e)))
 
         self._runtimes = info.get('Runtimes')
-
-    def create_volume(self, name):
-        self._client.volumes.create(name='my_volume')
 
     def get_nvidia_docker_gpus(self):
         """
@@ -186,7 +186,7 @@ class DockerManager:
         container = create_container_with_gpus(
             self._client,
             image,
-            command='/bin/bash',
+            command='/bin/sh',
             gpus=gpu_ids,
             available_runtimes=self._runtimes,
             volumes=volumes,

@@ -257,6 +257,21 @@ class ConnectorManager:
         """
         for runner in self._cli_output_runners:
             runner.check_output()
+            
+    def umount_connectors(self):
+        """
+        Tries to execute umount for every connector.
+
+        :return: The errors that occurred during execution
+        """
+        errors = []
+        for runner in self._input_runners:
+            try:
+                runner.try_umount()
+            except ConnectorError as e:
+                errors.append(e)
+
+        return errors
 
 
 def _resolve_glob_pattern(glob_pattern, connector_type=None):

@@ -1,19 +1,9 @@
-import glob
 import hashlib
 import os
-import sys
 
 import enum
-import shutil
-import stat
-import subprocess
-import json
-import tempfile
 
-from argparse import ArgumentParser
 from functools import total_ordering
-from json import JSONDecodeError
-from traceback import format_exc
 from typing import List, Dict
 
 
@@ -28,8 +18,8 @@ def _format_exception(exception):
 
 class ConnectorManager:
     def __init__(self):
-        self._input_runners = []  # type: List[InputConnectorRunner]
-        self._output_runners = []  # type: List[OutputConnectorRunner]
+        self._input_runners = [] 
+        self._output_runners = [] 
         self._cli_output_runners = []  # type: List[CliOutputRunner]
         self._connector_cli_version_cache = {}  # type: Dict[str, str]
 
@@ -384,8 +374,12 @@ class CliOutputRunner:
             path = paths[0]
 
             if self._output_class.is_file_like():
-                # dict_representation['checksum'] = calculate_file_checksum(path)
-                dict_representation['size'] = os.path.getsize(path)
+                dict_representation['checksum'] = calculate_file_checksum(path, docker_manager, container)
+                command = f'python3 -c "import os; print(os.path.getsize(\'{path}\'))"'
+                execution_result = docker_manager.run_command(
+                    container, command)._stdout.strip()
+                
+                dict_representation['size'] = execution_result
 
             dict_representation['path'] = path
         else:
@@ -432,7 +426,8 @@ class CliOutputRunner:
             path = glob_result[0]
 
             if self._checksum is not None:
-                file_checksum = calculate_file_checksum(path)
+                file_checksum = calculate_file_checksum(
+                    path, docker_manager, container)
                 if file_checksum != self._checksum:
                     raise ConnectorError(
                         'The given checksum for output key "{}" does not match.\n\tgiven checksum: "{}"'
@@ -451,7 +446,7 @@ class CliOutputRunner:
 
             if self._listing:
                 listing_content_check = directory_listing_content_check(
-                    path, self._listing)
+                    path, docker_manager, container, self._listing)
                 if listing_content_check:
                     raise ConnectorError(
                         'Listing validation for output key "{}" failed:\n{}'
@@ -462,13 +457,33 @@ class CliOutputRunner:
 FILE_CHUNK_SIZE = 1024 * 1024
 
 
-def calculate_file_checksum(path):
+def calculate_file_checksum(path,  docker_manager, container):
     """
     Calculates the sha1 checksum of a given file. The checksum is formatted in the following way: 'sha1$<checksum>'
 
     :param path: The path to the file, whose checksum should be calculated.
     :return: The sha1 checksum of the given file as string
     """
+
+    command = '''
+import hashlib
+FILE_CHUNK_SIZE = 1048576
+hasher = hashlib.sha1()
+with open(\'/cc/outputs/out.txt\', \'rb\') as file:
+    while True:
+        buf = file.read(FILE_CHUNK_SIZE)
+        if buf:
+            hasher.update(buf)
+        else:
+            break
+print(\'sha1$\' + hasher.hexdigest())
+'''
+
+
+    command_str = f'python3 -c "{command.strip()}"'
+    execution_result = docker_manager.run_command(container, command_str)
+    if (execution_result._stdout):
+        return execution_result._stdout.strip()
     hasher = hashlib.sha1()
     with open(path, 'rb') as file:
         while True:
@@ -480,7 +495,7 @@ def calculate_file_checksum(path):
     return 'sha1${}'.format(hasher.hexdigest())
 
 
-def _directory_listing_file_check(file_description, path):
+def _directory_listing_file_check(file_description, path, docker_manager, container):
     """
     Validates if the given file is present in the filesystem and checks for size and checksum, if given in the
     file_description.
@@ -498,7 +513,8 @@ def _directory_listing_file_check(file_description, path):
 
     checksum = file_description.get('checksum')
     if checksum is not None:
-        file_checksum = calculate_file_checksum(path)
+        file_checksum = calculate_file_checksum(
+            path, docker_manager, container)
         if checksum != file_checksum:
             return 'checksum of file "{}" does not match the checksum given in listing.' \
                    '\n\tgiven checksum: "{}"\n\tfile checksum : "{}"'.format(
@@ -515,7 +531,7 @@ def _directory_listing_file_check(file_description, path):
     return None
 
 
-def directory_listing_content_check(directory_path, listing):
+def directory_listing_content_check(directory_path, docker_manager, container,listing):
     """
     Checks if a given listing is present under the given directory path.
 
@@ -526,7 +542,7 @@ def directory_listing_content_check(directory_path, listing):
     for sub in listing:
         path = os.path.join(directory_path, sub['basename'])
         if sub['class'] == 'File':
-            file_check_result = _directory_listing_file_check(sub, path)
+            file_check_result = _directory_listing_file_check(sub, path, docker_manager, container)
             if file_check_result is not None:
                 return file_check_result
         elif sub['class'] == 'Directory':
@@ -534,7 +550,7 @@ def directory_listing_content_check(directory_path, listing):
                 return 'listing contains "{}" but this directory could not be found on disk'.format(path)
             listing = sub.get('listing')
             if listing:
-                res = directory_listing_content_check(path, listing)
+                res = directory_listing_content_check(path, docker_manager, container, listing)
                 if res is not None:
                     return res
     return None
