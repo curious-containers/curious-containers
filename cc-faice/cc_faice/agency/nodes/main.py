@@ -1,6 +1,7 @@
 import requests
 import sys
 import certifi
+import os
 
 from argparse import ArgumentParser
 
@@ -17,15 +18,24 @@ def attach_args(parser):
     parser.add_argument('--limit', action='store_true',
                         default=5, help='Maximum items to show')
     parser.add_argument('--agency-url', type=str, metavar='AGENCY_URL',
-                        default='https://souvemed-agency.f4.htw-berlin.de/cc', help='The url of the agency to test')
-
+                        default=os.environ.get('AGENCY_URL'), help='The url of the agency to test')
+    parser.add_argument('--account', type=str, metavar='ACCOUNT',
+                        help='The login account to the agency')
+    parser.add_argument(
+        '--keyring-service', action='store', type=str, metavar='KEYRING_SERVICE', default='red',
+        help='Keyring service to resolve template values, default is "red".'
+    )
 
 def main():
     parser = ArgumentParser(description=DESCRIPTION)
     attach_args(parser)
     args = parser.parse_args()
 
-    auth = getAuth(args.agency_url)
+    if not hasattr(args, 'account') or args.account is None:
+        print('ERROR: the following arguments are required: --account')
+        return 1
+    
+    auth = getAuth(args.agency_url, args.account, args.keyring_service)
 
     if auth is None:
         raise ValueError(

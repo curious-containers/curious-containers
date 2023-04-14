@@ -15,6 +15,9 @@ from cc_faice.agency.nodes.main import DESCRIPTION as NODES_DESCRIPTION
 from cc_faice.agency.user.main import DESCRIPTION as USER_DESCRIPTION
 
 from cc_core.commons.cli_modes import cli_modes
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 SCRIPT_NAME = 'faice convert'

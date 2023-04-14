@@ -1,11 +1,8 @@
 import pprint
 from datetime import datetime
+import keyring
+from requests.auth import HTTPBasicAuth
 
-
-AUTHENTICATION = {
-    'localhost': ('agency_user', 'agency_password'),
-    'souvemed-agency.f4.htw-berlin.de': ('Bruno', 'HeyHeyTest'),
-}
 
 class bcolors:
     HEADER = '\033[95m'
@@ -127,13 +124,22 @@ TO_PRINT_FUNC = {
     ('nodes', False): _print_nodes,
 }
 
-def getAuth(agency_url):
-    auth = None
-    for host, a in AUTHENTICATION.items():
-        if host in agency_url:
-            auth = a
-            break
-    return auth
+def getAuth(agency_url, account, service):
+    if agency_url is None:
+        return None
+    
+    password = keyring.get_password(service, account)
+    if password is None:
+        while True:
+            password = input("Enter password for {}: ".format(account))
+            confirm_password = input("Confirm password: ")
+            if password == confirm_password:
+                keyring.set_password(service, account, password)
+                break
+            else:
+                print("Passwords do not match. Please try again.")
+    else:
+        return HTTPBasicAuth(account, password)
     
 def show(args, request_type, r):
     if hasattr(args, 'show_file') and args.show_file is not None:
