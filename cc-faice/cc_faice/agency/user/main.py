@@ -1,7 +1,6 @@
 import os
 import requests
 
-import bcrypt
 from argparse import ArgumentParser
 from getpass import getpass
 from ..utility import getAuth
@@ -60,13 +59,10 @@ def run(auth, agency_url, account, config_file=None):
         print('Admin privileges GRANTED!')
     else:
         print('Admin privileges NOT granted!')
-        
-    salt = bcrypt.gensalt()
-    hashed_password = bcrypt.hashpw(password.encode('utf-8'), salt)
     
     data = {
         'username': username,
-        'password': hashed_password,
+        'password': password,
         'is_admin': is_admin
     }
     
