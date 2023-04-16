@@ -469,7 +469,7 @@ def calculate_file_checksum(path,  docker_manager, container):
 import hashlib
 FILE_CHUNK_SIZE = 1048576
 hasher = hashlib.sha1()
-with open(\'/cc/outputs/out.txt\', \'rb\') as file:
+with open(\'{}\', \'rb\') as file:
     while True:
         buf = file.read(FILE_CHUNK_SIZE)
         if buf:
@@ -477,7 +477,7 @@ with open(\'/cc/outputs/out.txt\', \'rb\') as file:
         else:
             break
 print(\'sha1$\' + hasher.hexdigest())
-'''
+'''.format(path)
 
 
     command_str = f'python3 -c "{command.strip()}"'
@@ -565,8 +565,6 @@ def _resolve_glob_pattern(glob_pattern, docker_manager, container, connector_typ
     :return: the resolved glob_pattern as list of strings
     :rtype: List[str]
     """
-    glob_pattern = 'out.txt'
-
     command = f'python3 -c "import glob, os; print(glob.glob(os.path.abspath(\'{glob_pattern}\')))"'
     execution_result = docker_manager.run_command(
         container, command)._stdout

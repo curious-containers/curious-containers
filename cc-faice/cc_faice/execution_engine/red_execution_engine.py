@@ -21,7 +21,7 @@ from cc_core.commons.red_secrets import get_secret_values
 
 from cc_faice.commons.docker import env_vars, DockerManager
 from red_val.red_validation import red_validation
-from .preparation import prepare_execution, outputs
+from cc_core.commons.preparation import prepare_execution, outputs
 
 DESCRIPTION = 'Run an experiment as described in a REDFILE with restricted red agent in a docker container.'
 
@@ -411,7 +411,8 @@ def run_restricted_red_batch(
         output_mode, disable_connector_validation)
 
     inputConnectorCommand = _create_connector_command(ConnectorType.Input)
-    outputConnectorCommand = _create_connector_command(ConnectorType.Output)
+    outputConnectorCommand = _create_connector_command(
+        ConnectorType.Output, disable_connector_validation)
     output_connector_container = None
 
     is_mounting = define_is_mounting(restricted_red_batch.data, insecure)
@@ -494,8 +495,10 @@ def run_restricted_red_batch(
             restricted_red_agent_result['command'] = command
             restricted_red_agent_result['returnCode'] = execution_result.return_code
             restricted_red_agent_result['executed'] = True
-            restricted_red_agent_result['stdout'] = execution_result._stdout
-            restricted_red_agent_result['stderr'] = execution_result._stderr
+            if execution_result._stdout is not None:
+                restricted_red_agent_result['stdout'] = execution_result._stdout.strip()
+            if execution_result._stderr is not None:
+                restricted_red_agent_result['stderr'] = execution_result._stderr.strip()
             
         except Exception as e:
             print(e)
@@ -752,11 +755,15 @@ def _create_restricted_red_agent_command(output_mode, disable_connector_validati
     return command
 
 
-def _create_connector_command(connectorType):
+def _create_connector_command(connectorType, disable_connector_validation = None):
     if (connectorType == ConnectorType.Input):
         command = [PYTHON_INTERPRETER, CONTAINER_INPUTCONNECTOR_PATH.as_posix(
         ), CONTAINER_INPUTCONNECTOR_FILE_PATH.as_posix()]
     else:
         command = [PYTHON_INTERPRETER, CONTAINER_OUTCONNECTOR_PATH.as_posix(
         ), CONTAINER_OUTPUTCONNECTOR_FILE_PATH.as_posix()]
+    
+    if disable_connector_validation:
+        command.append('--disable-connector-validation')
+
     return command

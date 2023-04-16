@@ -64,10 +64,18 @@ class AgentExecutionResult:
         if self._stdout is None:
             return
         
+        if isinstance(self._stdout, dict):
+            for key, value in self._stdout.items():
+                self._stdout[key] = value.strip('\n')
+            return self._stdout
+
         if self._parsed_stdout is None:
             try:
                 self._parsed_stdout = json.loads(self._stdout)
             except (json.JSONDecodeError, TypeError):
+                if isinstance(self._stdout, str):
+                        self._stdout = self._stdout.strip('\n')
+                        return self._stdout                        
                 raise AgentError(
                     'Internal Error. Could not parse stdout of agent.\n'
                     'Agent stdout:\n{}'
