@@ -230,7 +230,7 @@ class DockerManager:
         container.put_archive('/', archive)
 
     @staticmethod
-    def run_command(container, command, user=None, work_dir=None):
+    def run_command(container, command, user=None, work_dir=None, stdoutpath = None, stderrpath = None):
         """
         Runs the given command in the given container and waits for the execution to end.
 
@@ -273,5 +273,29 @@ class DockerManager:
             stderr = logs[1].decode('utf-8')
 
         stats = container.stats(stream=False)
+        
+        if stdoutpath is not None and stdout is not None:
+            out_message = stdout.split(': ')[-1].strip()
+            command = f'sh -c \'echo "{out_message}" >> "{stdoutpath}"\''
+            return_code, logs = container.exec_run(
+                cmd=command,
+                user=user,
+                workdir=work_dir,
+                stdout=True,
+                stderr=True,
+                demux=True
+            )
+            
+        if stderrpath is not None and stderr is not None:
+            error_message = stderr.split(': ')[-1].strip()
+            command = f'sh -c \'echo "{error_message}" >> "{stderrpath}"\''
+            return_code, logs = container.exec_run(
+                cmd=command,
+                user=user,
+                workdir=work_dir,
+                stdout=True,
+                stderr=True,
+                demux=True
+            )
 
         return AgentExecutionResult(return_code, stdout, stderr, stats)

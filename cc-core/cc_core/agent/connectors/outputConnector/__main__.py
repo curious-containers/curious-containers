@@ -26,6 +26,10 @@ def attach_args(parser):
         'restricted_red_file', action='store', type=str, metavar='RESTRICTED_RED_FILE',
         help='RESTRICTED_RED_FILE (json) containing an experiment description as local PATH or http URL.'
     )
+    parser.add_argument(
+        '--disable-connector-validation', action='store_true',
+        help='Skip connector validation.'
+    )
 
 
 def main():
@@ -105,13 +109,7 @@ def run(args):
         print_exception(e)
         result['debugInfo'] = exception_format()
         result['state'] = 'failed'
-    finally:
-        # umount directories
-        umount_errors = [_format_exception(
-            e) for e in connector_manager.umount_connectors()]
-        if umount_errors:
-            umount_errors.insert(0, 'Errors while unmounting directories:')
-            result['debugInfo'] = umount_errors
+    
 
     return result
 
@@ -1200,3 +1198,7 @@ class RedSpecificationError(Exception):
 
 class JobSpecificationError(Exception):
     pass
+
+
+if __name__ == '__main__':
+    exit(main())

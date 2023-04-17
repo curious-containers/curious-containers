@@ -489,17 +489,20 @@ def run_restricted_red_batch(
 
             execution_result = docker_manager.run_command(
                 container,
-                command
+                command,
+                stdoutpath= cli_stdout,
+                stderrpath=cli_stderr
             )
             
             restricted_red_agent_result['command'] = command
             restricted_red_agent_result['returnCode'] = execution_result.return_code
             restricted_red_agent_result['executed'] = True
-            if execution_result._stdout is not None:
-                restricted_red_agent_result['stdout'] = execution_result._stdout.strip()
-            if execution_result._stderr is not None:
-                restricted_red_agent_result['stderr'] = execution_result._stderr.strip()
-            
+            if isinstance(cli_stdout, str):
+                restricted_red_agent_result['stdout'] = os.path.join(
+                    CONTAINER_OUTPUT_DIR, cli_stdout)
+            if isinstance(cli_stderr, str):
+                restricted_red_agent_result['stderr'] = os.path.join(
+                    CONTAINER_OUTPUT_DIR, cli_stderr)
         except Exception as e:
             print(e)
             restricted_red_agent_result['state'] = 'failed'
@@ -508,7 +511,6 @@ def run_restricted_red_batch(
         
         outputs_result = outputs(docker_manager, container)
         further_errors = FurtherExecutionErrors()
-        restricted_red_agent_result['stdout'] = execution_result.get_agent_result_dict()
         restricted_red_agent_result['outputs'] = outputs_result
 
         abs_host_outdir = Path(os.path.abspath(
