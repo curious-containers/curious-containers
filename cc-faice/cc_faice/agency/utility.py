@@ -2,9 +2,10 @@ import pprint
 from datetime import datetime
 import keyring
 from requests.auth import HTTPBasicAuth
+from getpass import getpass
 
 
-class bcolors:
+class BColors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
     OKCYAN = '\033[96m'
@@ -35,17 +36,17 @@ def _format_timestamp(timestamp):
 
 def _color_state(state):
     if state == 'succeeded':
-        state = bcolors.OKGREEN + state + bcolors.ENDC + ' '
+        state = BColors.OKGREEN + state + BColors.ENDC + ' '
     elif state == 'failed':
-        state = bcolors.FAIL + state + bcolors.ENDC + '    '
+        state = BColors.FAIL + state + BColors.ENDC + '    '
     elif state == 'cancelled':
-        state = bcolors.GRAY + state + bcolors.ENDC + ' '
+        state = BColors.GRAY + state + BColors.ENDC + ' '
     elif state == 'scheduled':
-        state = bcolors.OKCYAN + state + bcolors.ENDC + ' '
+        state = BColors.OKCYAN + state + BColors.ENDC + ' '
     elif state == 'registered':
-        state = bcolors.OKBLUE + state + bcolors.ENDC
+        state = BColors.OKBLUE + state + BColors.ENDC
     elif state == 'processing':
-        state = bcolors.YELLOW + state + bcolors.ENDC
+        state = BColors.YELLOW + state + BColors.ENDC
     return state
 
 
@@ -76,9 +77,9 @@ def _print_nodes(nodes):
         gpus = len(node['gpus']) if node['gpus'] is not None else 0
         state = node['state']
         if state == 'online':
-            state = bcolors.OKGREEN + state + bcolors.ENDC + '  '
+            state = BColors.OKGREEN + state + BColors.ENDC + '  '
         if state == 'offline':
-            state = bcolors.FAIL + state + bcolors.ENDC + ' '
+            state = BColors.FAIL + state + BColors.ENDC + ' '
         print(format_string.format(name=node['nodeName'], state=state, cpus=node['cpus'],
               ram=node['ram'], gpus=gpus, batches=len(node['currentBatches'])))
 
@@ -124,15 +125,15 @@ TO_PRINT_FUNC = {
     ('nodes', False): _print_nodes,
 }
 
-def getAuth(agency_url, account, service):
+def get_auth(agency_url, account, service):
     if agency_url is None:
         return None
     
     password = keyring.get_password(service, account)
     if password is None:
         while True:
-            password = input("Enter password for {}: ".format(account))
-            confirm_password = input("Confirm password: ")
+            password = getpass("Enter password for {}: ".format(account))
+            confirm_password = getpass("Confirm password: ")
             if password == confirm_password:
                 keyring.set_password(service, account, password)
                 break
@@ -143,7 +144,7 @@ def getAuth(agency_url, account, service):
     
 def show(args, request_type, r):
     if hasattr(args, 'show_file') and args.show_file is not None:
-            print(r.content.decode('utf-8'))
+        print(r.content.decode('utf-8'))
     else:
         if args.raw:
             pprint.pprint(r.json())

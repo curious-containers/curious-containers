@@ -5,7 +5,7 @@ import os
 
 from argparse import ArgumentParser
 
-from ..utility import getAuth
+from ..utility import get_auth
 from ..utility import show
 
 DESCRIPTION = 'Get the list of experiments.'
@@ -18,7 +18,7 @@ def attach_args(parser):
                         default=5, help='Maximum items to show')
     parser.add_argument('--agency-url', type=str, metavar='AGENCY_URL',
                         default=os.environ.get('AGENCY_URL'), help='The url of the agency to test')
-    parser.add_argument('--account', type=str, metavar='ACCOUNT',
+    parser.add_argument('--account', type=str, metavar='ACCOUNT', required=True,
                         help='The login account to the agency')
     parser.add_argument(
         '--keyring-service', action='store', type=str, metavar='KEYRING_SERVICE', default='red',
@@ -29,12 +29,8 @@ def main():
     parser = ArgumentParser(description=DESCRIPTION)
     attach_args(parser)
     args = parser.parse_args()
-
-    if not hasattr(args, 'account') or args.account is None:
-        print('ERROR: the following arguments are required: --account')
-        return 1
     
-    auth = getAuth(args.agency_url, args.account, args.keyring_service)
+    auth = get_auth(args.agency_url, args.account, args.keyring_service)
 
     if auth is None:
         raise ValueError(
@@ -47,7 +43,7 @@ def main():
     }
 
     try:
-        r = requests.get(url, auth=auth, params=params, verify=False)
+        r = requests.get(url, auth=auth, params=params)
     except requests.exceptions.SSLError as e:
         print('ERROR: Could not connect to agency {}:\n{}'.format(url, repr(e)))
         print('\nVisit "{}" with your browser and download the certificate chain PEM file. Add the content of this file to "{}"'.format(

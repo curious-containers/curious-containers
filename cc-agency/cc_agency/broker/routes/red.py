@@ -126,17 +126,16 @@ def red_routes(app, mongo, auth, controller, trustee_client):
 
     @app.route('/createuser', methods=['POST'])
     def create_user():
-        conf_file = request.files.get('conf_file')
-        conf = Conf(conf_file)
-        mongo = Mongo(conf)
-        auth = Auth(conf, mongo)
-
-        username = request.form.get('username')
-        password = request.form.get('password')
-        is_admin = request.form.get('is_admin') == 'true'
-
+        data = request.json
+        username = data['username']
+        password = data['password']
+        is_admin = data.get('is_admin', False)
+        user = auth.verify_user(request.authorization,
+                         request.cookies, request.remote_addr)
+        if not user.is_admin:
+            return 'You do not have the necessary permissions to create a new user.', 403
         auth.create_user(username, password, is_admin=is_admin)
-        return 'User created successfully!', 200
+        return 'User created successfully!', 201
     
     
     @app.route('/red', methods=['POST'])

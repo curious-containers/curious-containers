@@ -31,7 +31,7 @@ MODES = OrderedDict([
     ('experiment', {'main': experiment_main,
      'description': EXPERIMENT_DESCRIPTION}),
     ('nodes', {'main': nodes_main, 'description': NODES_DESCRIPTION}),
-    ('create_user', {'main': user_main, 'description': USER_DESCRIPTION})
+    ('create-user', {'main': user_main, 'description': USER_DESCRIPTION})
 ])
 
 

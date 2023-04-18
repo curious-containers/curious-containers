@@ -5,7 +5,7 @@ import os
 
 from argparse import ArgumentParser
 
-from ..utility import getAuth
+from ..utility import get_auth
 from ..utility import show
 
 DESCRIPTION = 'Get experiment details with experiment #id'
@@ -13,7 +13,7 @@ REQ_TYPE = 'experiments'
 
 
 def attach_args(parser):
-    parser.add_argument('id', type=str, metavar='ID',
+    parser.add_argument('id', type=str, metavar='ID', required=True,
                         help='The id of the experiment/batch.')
     parser.add_argument('--raw', action='store_true',
                         default=False, help='Show raw json object')    
@@ -21,7 +21,7 @@ def attach_args(parser):
                         default=os.environ.get('AGENCY_URL'), help='The url of the agency to test')
     parser.add_argument('--show-file', type=str, metavar='OUTFILE',
                         default=None, help='Show content of stdout/stderr')
-    parser.add_argument('--account', type=str, metavar='ACCOUNT',
+    parser.add_argument('--account', type=str, metavar='ACCOUNT', required=True,
                         help='The login account to the agency')
     parser.add_argument(
         '--keyring-service', action='store', type=str, metavar='KEYRING_SERVICE', default='red',
@@ -32,16 +32,8 @@ def main():
     parser = ArgumentParser(description=DESCRIPTION)
     attach_args(parser)
     args = parser.parse_args()
-
-    if not hasattr(args, 'id') or args.id is None:
-        print('ERROR: the following arguments are required: id')
-        return 1
-
-    if not hasattr(args, 'account') or args.account is None:
-        print('ERROR: the following arguments are required: --account')
-        return 1
     
-    auth = getAuth(args.agency_url, args.account, args.keyring_service)
+    auth = get_auth(args.agency_url, args.account, args.keyring_service)
 
     if auth is None:
         raise ValueError(
@@ -53,7 +45,7 @@ def main():
         url = '{}/{}'.format(url, args.show_file)
 
     try:
-        r = requests.get(url, auth=auth, verify=False)
+        r = requests.get(url, auth=auth)
     except requests.exceptions.SSLError as e:
         print('ERROR: Could not connect to agency {}:\n{}'.format(url, repr(e)))
         print('\nVisit "{}" with your browser and download the certificate chain PEM file. Add the content of this file to "{}"'.format(
