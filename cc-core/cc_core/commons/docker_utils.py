@@ -15,14 +15,14 @@ from docker.models.images import Image
 
 from cc_core.commons.engines import NVIDIA_DOCKER_RUNTIME
 from cc_core.commons.red_to_restricted_red import CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH,\
-    CONTAINER_OUTPUT_DIR, CONTAINER_INPUT_DIR
+    CONTAINER_OUTPUT_DIR, CONTAINER_INPUT_DIR, CONTAINER_INPUTCONNECTOR_FILE_PATH, CONTAINER_INPUTCONNECTOR_PATH, CONTAINER_OUTCONNECTOR_PATH, CONTAINER_OUTPUTCONNECTOR_FILE_PATH
 
 GPU_CAPABILITIES = [['gpu'], ['nvidia'], ['compute'], ['compat32'], ['graphics'], ['utility'], ['video'], ['display']]
 GPU_QUERY_IMAGE = 'nvidia/cuda:8.0-runtime'
 DIRECTORY_PERMISSIONS = stat.S_IROTH | stat.S_IWOTH | stat.S_IXOTH
 
 
-def create_container_with_gpus(client, image, command, available_runtimes, gpus=None, environment=None, **kwargs):
+def create_container_with_gpus(client, image, command, available_runtimes, volumes, gpus=None, environment=None, **kwargs):
     """
     Creates a docker container with optional gpus, accessible by nvidia runtime or nvidia-container-toolkit.
 
@@ -68,7 +68,8 @@ def create_container_with_gpus(client, image, command, available_runtimes, gpus=
                 # try creation with device request
                 container = _create_with_nvidia_container_toolkit(client, image, command, gpus, kwargs)
         else:
-            container = client.containers.create(image, command, environment=environment, **kwargs)
+            container = client.containers.create(
+                image, command, volumes=volumes, environment=environment, **kwargs)
     except ConnectionError as e:
         raise DockerException(
             'Could not create docker container. Failed with the following ConnectionError:\n{}'.format(str(e))
@@ -251,6 +252,53 @@ def create_batch_archive(restricted_red_data):
     return data_file
 
 
+def create_connector_archive(restricted_red_data, connectorType):
+    if (connectorType == "input"):
+        connectorAgent = CONTAINER_INPUTCONNECTOR_PATH
+        connectorFile = CONTAINER_INPUTCONNECTOR_FILE_PATH
+        agent_path = get_inputConnector_host_path()
+
+    else:
+        connectorAgent = CONTAINER_OUTCONNECTOR_PATH
+        connectorFile = CONTAINER_OUTPUTCONNECTOR_FILE_PATH
+        agent_path = get_outputConnector_host_path()
+
+    # create a buffer for the archive
+    data_file = io.BytesIO()
+
+    # create a tar archive object and set permissions
+    with tarfile.open(mode='w', fileobj=data_file) as tar_file:
+        # add restricted red agent to the archive
+        agent_tarinfo = tar_file.gettarinfo(
+            str(agent_path), arcname=connectorAgent.as_posix())
+        set_permissions_and_owner(agent_tarinfo, stat.S_IROTH | stat.S_IXOTH)
+        with agent_path.open('rb') as agent_file:
+            tar_file.addfile(agent_tarinfo, agent_file)
+
+        # add restricted red file to the archive
+        restricted_red_batch_content = json.dumps(
+            restricted_red_data).encode('utf-8')
+        restricted_red_batch_tarinfo = tarfile.TarInfo(
+            connectorFile.as_posix())
+        restricted_red_batch_tarinfo.size = len(restricted_red_batch_content)
+        set_permissions_and_owner(restricted_red_batch_tarinfo, stat.S_IROTH)
+        tar_file.addfile(restricted_red_batch_tarinfo,
+                         io.BytesIO(restricted_red_batch_content))
+
+        # add outputs directory to the archive
+        output_directory_tarinfo = create_directory_tarinfo(
+            CONTAINER_OUTPUT_DIR, permissions=DIRECTORY_PERMISSIONS)
+        tar_file.addfile(output_directory_tarinfo)
+
+        # add inputs directory to the archive
+        input_directory_tarinfo = create_directory_tarinfo(
+            CONTAINER_INPUT_DIR, permissions=DIRECTORY_PERMISSIONS)
+        tar_file.addfile(input_directory_tarinfo)
+
+    # reset the buffer and return the archive
+    data_file.seek(0)
+    return data_file
+
 def create_directory_tarinfo(directory_name, permissions, owner_id=0, owner_name='root'):
     """
     Creates a tarfile.TarInfo object, that represents a directory with the given directory name.
@@ -281,6 +329,15 @@ def get_restricted_red_agent_host_path():
     import cc_core.agent.restricted_red.__main__ as restricted_red_main
     return Path(restricted_red_main.__file__)
 
+
+def get_inputConnector_host_path():
+    import cc_core.agent.connectors.inputConnector.__main__ as intputConnector_main
+    return Path(intputConnector_main.__file__)
+
+
+def get_outputConnector_host_path():
+    import cc_core.agent.connectors.outputConnector.__main__ as outputConnector_main
+    return Path(outputConnector_main.__file__)
 
 def image_to_str(image):
     """
@@ -330,7 +387,14 @@ def detect_nvidia_docker_gpus(client, runtimes):
             GPU_QUERY_IMAGE,
             command=command,
             available_runtimes=runtimes,
-            gpus='all'
+            volumes={
+                'experiment_files': {
+                    'bind': '/cc',
+                    'mode': 'rw',
+                },
+            },
+            gpus='all',
+            
         )
         container.start()
         container.wait()

@@ -25,7 +25,14 @@ from red_val.red_types import InputType
 CONTAINER_OUTPUT_DIR = PurePosixPath('/cc/outputs')
 CONTAINER_INPUT_DIR = PurePosixPath('/cc/inputs')
 CONTAINER_AGENT_PATH = PurePosixPath('/cc/restricted_red_agent.py')
-CONTAINER_RESTRICTED_RED_FILE_PATH = PurePosixPath('/cc/restricted_red_file.json')
+CONTAINER_RESTRICTED_RED_FILE_PATH = PurePosixPath(
+    '/cc/restricted_red_file.json')
+CONTAINER_INPUTCONNECTOR_PATH = PurePosixPath('/cc/inputConnector.py')
+CONTAINER_INPUTCONNECTOR_FILE_PATH = PurePosixPath(
+    '/cc/inputConnector.json')
+CONTAINER_OUTCONNECTOR_PATH = PurePosixPath('/cc/outputConnector.py')
+CONTAINER_OUTPUTCONNECTOR_FILE_PATH = PurePosixPath(
+    '/cc/outputConnector.json')
 
 
 class RestrictedRedBatch:
