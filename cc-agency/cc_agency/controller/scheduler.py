@@ -264,7 +264,7 @@ class Scheduler:
         cursor = self._mongo.db['batches'].find(
             {
                 'node': {'$in': node_names},
-                'state': {'$in': ['scheduled', 'processing']}},
+                'state': {'$in': ['scheduled', 'processing_input', 'processing', 'processing_output']}},
             {'experimentId': 1, 'node': 1, 'usedGPUs': 1}
         )
         batches = list(cursor)
@@ -473,7 +473,7 @@ class Scheduler:
         else:
             batch_count = self._mongo.db['batches'].count({
                 'experimentId': experiment_id,
-                'state': {'$in': ['scheduled', 'processing']}
+                'state': {'$in': ['scheduled', 'processing_input', 'processing', 'processing_output']}
             })
             batch_count_cache[experiment_id] = batch_count
         return batch_count

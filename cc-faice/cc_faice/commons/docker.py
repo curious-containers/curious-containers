@@ -178,6 +178,12 @@ class DockerManager:
             image,
             command='/bin/sh',
             gpus=gpu_ids,
+            volumes={
+                'experiment_files': {
+                    'bind': '/cc',
+                    'mode': 'rw',
+                },
+            },
             available_runtimes=self._runtimes,
             name=name,
             # user='1000:1000',

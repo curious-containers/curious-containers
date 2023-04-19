@@ -8,6 +8,7 @@ import time
 from traceback import format_exc
 from typing import List, Tuple, Dict
 from tarfile import StreamError
+from enum import Enum
 
 import docker
 from cc_core.commons.exceptions import log_format_exception, AgentError
@@ -22,14 +23,17 @@ from requests.exceptions import ConnectionError, ReadTimeout
 from bson.objectid import ObjectId
 import bson.errors
 
-from cc_core.commons.gpu_info import GPUDevice, NVIDIA_GPU_VENDOR
-from cc_agency.commons.schemas.callback import agent_result_schema
+from cc_core.commons.gpu_info import GPUDevice, NVIDIA_GPU_VENDOR, set_nvidia_environment_variables
+from cc_agency.commons.schemas.callback import agent_result_schema, inputconnector_result_schema, outputconnector_result_schema
 from cc_agency.commons.secrets import get_experiment_secret_keys, fill_experiment_secrets, fill_batch_secrets, \
     get_batch_secret_keys, TrusteeClient
+
+from cc_core.commons.preparation import prepare_execution, outputs
 from cc_core.commons.docker_utils import create_container_with_gpus, create_batch_archive, image_to_str, \
-    detect_nvidia_docker_gpus, retrieve_file_archive, get_first_tarfile_member
+    detect_nvidia_docker_gpus, retrieve_file_archive, get_first_tarfile_member, create_connector_archive
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red, CONTAINER_OUTPUT_DIR, \
-    CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH
+    CONTAINER_AGENT_PATH, CONTAINER_INPUTCONNECTOR_PATH, CONTAINER_INPUTCONNECTOR_FILE_PATH, CONTAINER_OUTCONNECTOR_PATH, CONTAINER_OUTPUTCONNECTOR_FILE_PATH, \
+    CONTAINER_RESTRICTED_RED_FILE_PATH
 from cc_agency.commons.helper import batch_failure, USER_SPECIFIED_STDOUT_KEY, USER_SPECIFIED_STDERR_KEY, \
     get_gridfs_filename, STDERR_FILE_KEY, STDOUT_FILE_KEY
 from cc_agency.commons.db import Mongo
@@ -41,6 +45,259 @@ CHECK_EXITED_CONTAINERS_INTERVAL = 1.0
 OFFLINE_INSPECTION_INTERVAL = 10
 CHECK_FOR_BATCHES_INTERVAL = 20
 IMAGE_PRUNE_INTERVAL = 3600
+
+
+class AgentExecutionResult:
+    def __init__(self, return_code, stdout, stderr, stats):
+        """
+        Creates a new AgentExecutionResult
+
+        :param return_code: The return code of the execution
+        :type return_code: int
+        :param stdout: The decoded agent stdout
+        :type stdout: str
+        :param stderr: The decoded agent stderr
+        :type stderr: str
+        :param stats: A dictionary containing information about the container execution
+        :type stats: Dict
+        """
+        self.return_code = return_code
+        self._stdout = stdout
+        self._parsed_stdout = None
+        self._stderr = stderr
+        self._stats = stats
+
+    def get_stdout(self):
+        return self._stdout
+
+    def get_agent_result_dict(self):
+        """
+        This function parses the stdout only once.
+
+        :return: The result of the agent as dictionary
+        :rtype: Dict
+
+        :raise AgentError: If the stdout of the agent is not valid json
+        """
+        if self._parsed_stdout is None:
+            try:
+                self._parsed_stdout = json.loads(self._stdout)
+            except (json.JSONDecodeError, TypeError):
+                raise AgentError(
+                    'Internal Error. Could not parse stdout of agent.\n'
+                    'Agent stdout:\n{}'
+                    '\nAgent stderr:\n{}'
+                    .format(self._stdout, self._stderr)
+                )
+
+        return self._parsed_stdout
+
+    def get_stderr(self):
+        return self._stderr
+
+    def get_stats(self):
+        """
+        :return: the stats of the docker container after execution has finished
+        :rtype: Dict
+        """
+        return self._stats
+
+    def was_user_process_executed(self):
+        return 'returnCode' in self.get_agent_result_dict()
+
+
+class DockerManager:
+    def __init__(self):
+        try:
+            self._client = docker.from_env()
+            info = self._client.info()  # This raises a ConnectionError, if the docker socket was not found
+        except ConnectionError:
+            raise DockerException('Could not connect to docker socket. Is the docker daemon running?')
+        except DockerException as e:
+            raise DockerException('Could not create docker client from environment.\n{}'.format(str(e)))
+
+        self._runtimes = info.get('Runtimes')
+
+    def get_nvidia_docker_gpus(self):
+        """
+        Returns a list of GPUDevices, which are available for this docker client.
+
+        This function starts a nvidia docker container and executes nvidia-smi in order to retrieve information about
+        the gpus, that are available to this docker_manager.
+
+        :raise DockerException: If the stdout of the query could not be parsed or if the container execution failed
+
+        :return: A list of GPUDevices
+        :rtype: List[GPUDevice]
+        """
+        return detect_nvidia_docker_gpus(self._client, self._runtimes)
+
+    def pull(self, image, auth=None):
+        self._client.images.pull(image, auth_config=auth)
+
+    def create_container(
+            self,
+            name,
+            image,
+            ram,
+            working_directory,
+            gpus=None,
+            environment=None,
+            enable_fuse=False
+    ):
+        """
+        Creates a docker container with the given arguments. This docker container is running endlessly until
+        container.stop() is called.
+        If nvidia gpus are specified, the nvidia runtime is used, if available. Otherwise a device request for nvidia
+        gpus is added.
+
+        :param name: The name of the container
+        :type name: str
+        :param image: The image to use for this container
+        :type image: str
+        :param ram: The ram limit for this container in megabytes
+        :type ram: int
+        :param working_directory: The working directory inside the docker container
+        :type working_directory: PurePosixPath
+        :param gpus: A specification of gpus to enable in this docker container
+        :type gpus: List[GPUDevice]
+        :param environment: A dictionary containing environment variables, which should be set inside the container
+        :type environment: Dict[str, Any]
+        :param enable_fuse: If True, SYS_ADMIN capabilities are granted for this container and /dev/fuse is mounted
+        :type enable_fuse: bool
+
+        :return: The created container
+        :rtype: Container
+
+        :raise RuntimeNotSupportedError: If the specified runtime is not installed on the docker host
+        """
+        if environment is None:
+            environment = {}
+
+        mem_limit = None
+        if ram is not None:
+            mem_limit = '{}m'.format(ram)
+
+        gpu_ids = None
+        if gpus:
+            set_nvidia_environment_variables(environment, map(lambda gpu: gpu.device_id, gpus))
+            gpu_ids = [gpu.device_id for gpu in gpus]
+
+        # enable fuse
+        devices = []
+        capabilities = []
+        if enable_fuse:
+            devices.append('/dev/fuse')
+            capabilities.append('SYS_ADMIN')
+
+        # the user argument is not set to use the user specified by the docker image
+        container = create_container_with_gpus(
+            self._client,
+            image,
+            command='/bin/sh',
+            gpus=gpu_ids,
+            available_runtimes=self._runtimes,
+            name=name,
+            # user='1000:1000',
+            working_dir=working_directory.as_posix(),
+            mem_limit=mem_limit,
+            memswap_limit=mem_limit,
+            environment=environment,
+            cap_add=capabilities,
+            devices=devices,
+            ulimits=[Ulimit(name='nofile', soft=NOFILE_LIMIT, hard=NOFILE_LIMIT)],
+            # needed to run the container endlessly
+            tty=True,
+            stdin_open=True,
+            auto_remove=False,
+        )
+        container.start()
+
+        return container
+
+    @staticmethod
+    def put_archive(container, archive):
+        """
+        Inserts the given tar archive into the container.
+
+        :param container: The container to put the archive in
+        :type container: Container
+        :param archive: The archive, that is copied into the container
+        :type archive: bytes
+        """
+        container.put_archive('/', archive)
+
+    @staticmethod
+    def run_command(container, command, user=None, work_dir=None, stdoutpath=None, stderrpath=None):
+        """
+        Runs the given command in the given container and waits for the execution to end.
+
+        :param container: The container to run the command in. The given container should be in state running, like it
+                          is, if created by docker_manager.create_container()
+        :type container: Container
+        :param command: The command to execute inside the given docker container
+        :type command: list[str] or str
+        :param user: The user to execute the command. If no user is specified the user specified in the image is used
+        :type user: str or int
+        :param work_dir: The working directory where to execute the command
+        :type work_dir: str
+
+        :return: A agent execution result, representing the result of this container execution
+        :rtype: AgentExecutionResult
+        """
+        try:
+            return_code, logs = container.exec_run(
+                cmd=command,
+                user=user,
+                workdir=work_dir,
+                stdout=True,
+                stderr=True,
+                demux=True
+            )
+        except APIError as e:
+            raise ValueError(
+                'could not execute command "{}" in container "{}". Failed with the following message:\n{}'
+                .format(command, container, str(e))
+            )
+
+        if logs[0] is None:
+            stdout = None
+        else:
+            stdout = logs[0].decode('utf-8')
+
+        if logs[1] is None:
+            stderr = None
+        else:
+            stderr = logs[1].decode('utf-8')
+
+        stats = container.stats(stream=False)
+        
+        if stdoutpath is not None and stdout is not None:
+            out_message = stdout.split(': ')[-1].strip()
+            command = f'sh -c \'echo "{out_message}" >> "{stdoutpath}"\''
+            return_code, logs = container.exec_run(
+                cmd=command,
+                user=user,
+                workdir=work_dir,
+                stdout=True,
+                stderr=True,
+                demux=True
+            )
+
+        if stderrpath is not None and stderr is not None:
+            error_message = stderr.split(': ')[-1].strip()
+            command = f'sh -c \'echo "{error_message}" >> "{stderrpath}"\''
+            return_code, logs = container.exec_run(
+                cmd=command,
+                user=user,
+                workdir=work_dir,
+                stdout=True,
+                stderr=True,
+                demux=True
+            )
+
+        return AgentExecutionResult(return_code, stdout, stderr, stats)
+
 
 
 class ImagePullResult:
@@ -67,6 +324,26 @@ class ImagePullResult:
         self.depending_batches = depending_batches
 
 
+class ConnectorType(Enum):
+    Input = 0
+    Output = 1
+
+
+def _create_connector_command(connectorType, disable_connector_validation=None):
+    if (connectorType == ConnectorType.Input):
+        command = ['python3', CONTAINER_INPUTCONNECTOR_PATH.as_posix(
+        ), CONTAINER_INPUTCONNECTOR_FILE_PATH.as_posix()]
+    else:
+        command = ['python3', CONTAINER_OUTCONNECTOR_PATH.as_posix(
+        ), CONTAINER_OUTPUTCONNECTOR_FILE_PATH.as_posix()]
+
+    if disable_connector_validation:
+        command.append('--disable-connector-validation')
+
+    return command
+   
+
+    
 def _pull_image(docker_client, image_url, auth, depending_batches):
     """
     Pulls the given docker image and returns a ImagePullResult object.
@@ -299,7 +576,7 @@ class ClientProxy:
         cursor = self._mongo.db['batches'].find(
             {
                 'node': self._node_name,
-                'state': {'$in': ['scheduled', 'processing']}
+                'state': {'$in': ['scheduled', 'processing_input', 'processing', 'processing_output']}
             },
             {'_id': 1, 'state': 1}
         )
@@ -660,6 +937,75 @@ class ClientProxy:
 
         return debug_info
 
+    def _handle_agent_result(self, data, gridfs_helper, stderr_logs, batch_id, docker_stats, bson_batch_id):
+        if data['state'] == 'failed':
+            out_err_errors = None
+            if data['executed']:
+                out_err_errors = gridfs_helper.write_stdout_stderr_to_gridfs()
+
+            debug_info = 'Batch failed.\nContainer stderr:\n{}\ndebug info:\n{}'.format(
+                stderr_logs, data['debugInfo'])
+
+            if out_err_errors:
+                debug_info = ClientProxy._join_out_err_to_debug_info(
+                    debug_info, out_err_errors)
+                self._log(
+                    'Failed to transfer stdout/stderr from container:\n{}'.format('\n'.join(out_err_errors)))
+
+            batch_failure(self._mongo, batch_id, debug_info, data,
+                        batch['state'], docker_stats=docker_stats)
+            return
+
+        batch = self._mongo.db['batches'].find_one(
+            {'_id': bson_batch_id},
+            {'attempts': 1, 'node': 1, 'state': 1,
+                USER_SPECIFIED_STDOUT_KEY: 1, USER_SPECIFIED_STDERR_KEY: 1}
+        )
+        # check batch state
+        if batch['state'] != 'processing' and batch['state'] != 'processing_output':
+            out_err_errors = gridfs_helper.write_stdout_stderr_to_gridfs()
+            debug_info = 'Batch failed.\nExited container, but not in state processing.'
+
+            if out_err_errors:
+                debug_info = ClientProxy._join_out_err_to_debug_info(
+                    debug_info, out_err_errors)
+                self._log(
+                    'Failed to transfer stdout/stderr from container:\n{}'.format('\n'.join(out_err_errors)))
+
+            batch_failure(self._mongo, batch_id, debug_info, None,
+                        batch['state'], docker_stats=docker_stats)
+            self._log(
+                'Container exited but batch is in state "{}"'.format(batch['state']))
+            return
+
+        # from here it is expected that the batch was successful
+        debug_info = gridfs_helper.write_stdout_stderr_to_gridfs(
+            include_stdout=batch[USER_SPECIFIED_STDOUT_KEY],
+            include_stderr=batch[USER_SPECIFIED_STDERR_KEY]
+        )
+
+        self._mongo.db['batches'].update_one(
+            {
+                '_id': bson_batch_id,
+                'state': {'$in': ['processing', 'processing_output']}
+            },
+            {
+                '$set': {
+                    'state': 'succeeded'
+                },
+                '$push': {
+                    'history': {
+                        'state': 'succeeded',
+                        'time': time.time(),
+                        'debugInfo': debug_info or None,
+                        'node': batch['node'],
+                        'ccagent': data,
+                        # 'dockerStats': docker_stats
+                    }
+                }
+            }
+        )
+    
     def _check_exited_container(self, container, batch):
         """
         Inspects the logs of the given exited container and updates the database accordingly.
@@ -680,7 +1026,7 @@ class ClientProxy:
         gridfs_stderr_filename = get_gridfs_filename(batch_id, 'stderr')
 
         try:
-            stdout_logs = container.logs(stderr=False).decode('utf-8')
+            stdout_logs = container.logs(stderr=False).decode('utf-8').strip()
             stderr_logs = container.logs(stdout=False).decode('utf-8')
 
             docker_stats = container.stats(stream=False)
@@ -689,13 +1035,15 @@ class ClientProxy:
             debug_info = 'Could not get logs or stats of container: {}'.format(log_format_exception(e))
             batch_failure(self._mongo, batch_id, debug_info, None, batch['state'])
             return
+        
+       
 
         data = None
         try:
             data = json.loads(stdout_logs)
         except json.JSONDecodeError as e:
-            debug_info = 'stdout of agent is not a valid json object: {}\nstdout of agent was:\n{}'\
-                         .format(log_format_exception(e), stdout_logs)
+            debug_info = '{}, {},stdout of agent is not a valid json object: {}\nstdout of agent was:\n{}'\
+                         .format(stdout_logs, stderr_logs, log_format_exception(e), stdout_logs)
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
             self._log('Failed to load json from restricted red agent:', e)
             return
@@ -719,78 +1067,26 @@ class ClientProxy:
         )
 
         try:
-            jsonschema.validate(data, agent_result_schema)
+            jsonschema.validate(data, agent_result_schema)                
         except jsonschema.ValidationError as e:
             out_err_errors = gridfs_helper.write_stdout_stderr_to_gridfs()
-            debug_info = 'CC-Agent stdout does not comply with jsonschema:\n{}'.format(log_format_exception(e))
+            debug_info = 'CC-Agent stdout does not comply with jsonschema:\n{}'.format(
+                log_format_exception(e))
 
             if out_err_errors:
-                debug_info = ClientProxy._join_out_err_to_debug_info(debug_info, out_err_errors)
-                self._log('Failed to transfer stdout/stderr from container:\n{}'.format('\n'.join(out_err_errors)))
+                debug_info = ClientProxy._join_out_err_to_debug_info(
+                    debug_info, out_err_errors)
+                self._log(
+                    'Failed to transfer stdout/stderr from container:\n{}'.format('\n'.join(out_err_errors)))
 
-            batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
+            batch_failure(self._mongo, batch_id, debug_info, data,
+                        batch['state'], docker_stats=docker_stats)
             self._log('Failed to validate restricted_red agent output:', e)
             return
-
-        if data['state'] == 'failed':
-            out_err_errors = None
-            if data['process']['executed']:
-                out_err_errors = gridfs_helper.write_stdout_stderr_to_gridfs()
-
-            debug_info = 'Batch failed.\nContainer stderr:\n{}\ndebug info:\n{}'.format(stderr_logs, data['debugInfo'])
-
-            if out_err_errors:
-                debug_info = ClientProxy._join_out_err_to_debug_info(debug_info, out_err_errors)
-                self._log('Failed to transfer stdout/stderr from container:\n{}'.format('\n'.join(out_err_errors)))
-
-            batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
-            return
-
-        batch = self._mongo.db['batches'].find_one(
-            {'_id': bson_batch_id},
-            {'attempts': 1, 'node': 1, 'state': 1, USER_SPECIFIED_STDOUT_KEY: 1, USER_SPECIFIED_STDERR_KEY: 1}
-        )
-        # check batch state
-        if batch['state'] != 'processing':
-            out_err_errors = gridfs_helper.write_stdout_stderr_to_gridfs()
-            debug_info = 'Batch failed.\nExited container, but not in state processing.'
-
-            if out_err_errors:
-                debug_info = ClientProxy._join_out_err_to_debug_info(debug_info, out_err_errors)
-                self._log('Failed to transfer stdout/stderr from container:\n{}'.format('\n'.join(out_err_errors)))
-
-            batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
-            self._log('Container exited but batch is in state "{}"'.format(batch['state']))
-            return
-
-        # from here it is expected that the batch was successful
-        debug_info = gridfs_helper.write_stdout_stderr_to_gridfs(
-            include_stdout=batch[USER_SPECIFIED_STDOUT_KEY],
-            include_stderr=batch[USER_SPECIFIED_STDERR_KEY]
-        )
-
-        self._mongo.db['batches'].update_one(
-            {
-                '_id': bson_batch_id,
-                'state': 'processing'
-            },
-            {
-                '$set': {
-                    'state': 'succeeded'
-                },
-                '$push': {
-                    'history': {
-                        'state': 'succeeded',
-                        'time': time.time(),
-                        'debugInfo': debug_info or None,
-                        'node': batch['node'],
-                        'ccagent': data,
-                        # 'dockerStats': docker_stats
-                    }
-                }
-            }
-        )
-
+        
+        self._handle_agent_result(data, gridfs_helper, stderr_logs,
+         batch_id, docker_stats, bson_batch_id)
+        
     def do_check_for_batches(self):
         """
         Triggers a check-for-batches cycle.
@@ -1079,11 +1375,11 @@ class ClientProxy:
             },
             {
                 '$set': {
-                    'state': 'processing',
+                    'state': 'processing_input',
                 },
                 '$push': {
                     'history': {
-                        'state': 'processing',
+                        'state': 'processing_input',
                         'time': time.time(),
                         'debugInfo': None,
                         'node': self._node_name,
@@ -1097,6 +1393,17 @@ class ClientProxy:
         # only run the docker container, if the batch was successfully updated
         if update_result.modified_count == 1:
             self._run_container(batch, experiment)
+
+    def _create_input_connector_batch_archive(self, batch):
+        restricted_red_data = self._create_restricted_red_batch(batch)
+        return create_connector_archive(restricted_red_data['inputs'], "input")
+
+
+    def _create_output_connector_batch_archive(self, batch):
+        restricted_red_data = self._create_restricted_red_batch(batch)
+        outputConnectorData = {
+            'cli': restricted_red_data['cli'], 'outputs': restricted_red_data['outputs']}
+        return create_connector_archive(outputConnectorData, "output")
 
     def _run_container(self, batch, experiment):
         """
@@ -1135,16 +1442,16 @@ class ClientProxy:
 
         # set image
         image = experiment['container']['settings']['image']['url']
-
-        command = [
-            'python3',
-            CONTAINER_AGENT_PATH.as_posix(),
-            CONTAINER_RESTRICTED_RED_FILE_PATH.as_posix(),
-            '--outputs',
-        ]
+        
+        input_connector_command = _create_connector_command(
+            ConnectorType.Input)
 
         if experiment.get('execution', {}).get('settings', {}).get('disableConnectorValidation'):
-            command.append('--disable-connector-validation')
+            output_connector_command = _create_connector_command(
+                ConnectorType.Output, True)
+        else:
+            output_connector_command = _create_connector_command(
+                ConnectorType.Output, False)
 
         ram = experiment['container']['settings']['ram']
         mem_limit = '{}m'.format(ram)
@@ -1162,33 +1469,287 @@ class ClientProxy:
         existing_container = self._batch_containers(None).get(batch_id)
         if existing_container is not None:
             existing_container.remove(force=True)
+        
+        docker_manager = DockerManager()
 
-        # the user argument is not set to use the user specified by the docker image
-        container = create_container_with_gpus(
+        input_container = create_container_with_gpus(
             client=self._client,
             image=image,
-            command=command,
+            command='/bin/sh',
             available_runtimes=self._runtimes,
-            name=batch_id,
+            name=batch_id+ '_input',
             working_dir=CONTAINER_OUTPUT_DIR.as_posix(),
-            detach=True,
             mem_limit=mem_limit,
             memswap_limit=mem_limit,
             gpus=gpus,
+            volumes={
+                'experiment_files': {
+                    'bind': '/cc',
+                    'mode': 'rw',
+                },
+            },
             environment=environment,
             network=self._network,
             devices=devices,
             cap_add=capabilities,
             security_opt=security_opt,
-            ulimits=ulimits
+            ulimits=ulimits,
+            tty=True,
+            stdin_open=True,
+            auto_remove=False,
         )  # type: Container
 
-        # copy restricted_red agent and restricted_red file to container
-        with self._create_batch_archive(batch) as tar_archive:
-            container.put_archive('/', tar_archive)
+        with self._create_input_connector_batch_archive(batch) as tar_archive:
+            input_container.put_archive('/', tar_archive)
 
-        container.start()
+        input_container.start()
+        try:
+            execution_result = docker_manager.run_command(
+                input_container,
+                input_connector_command
+            )
 
+            result = json.loads(execution_result._stdout)
+        except json.JSONDecodeError as e:
+            debug_info = 'stdout of input container is not a valid json object: {}\nstdout of input container was:\n{}'\
+                         .format(log_format_exception(e), execution_result._stdout)
+            batch_failure(self._mongo, batch_id, debug_info, data,
+                          batch['state'], docker_stats=execution_result._stats)
+            self._log('Failed to load json from stdout input container:', e)
+            return
+        
+        input_container.stop(timeout=0)
+        input_container.remove(force=True, v=True)
+        state = result['state']
+        
+        if state is not None and state == 'succeeded':      
+            update_result = self._mongo.db['batches'].update_one(
+                {
+                    '_id': ObjectId(batch_id),
+                    'state': 'processing_input'
+                },
+                {
+                    '$set': {
+                        'state': 'processing',
+                    },
+                    '$push': {
+                        'history': {
+                            'state': 'processing',
+                            'time': time.time(),
+                            'debugInfo': None,
+                            'node': self._node_name,
+                            'ccagent': None,
+                            # 'dockerStats': None
+                        }
+                    }
+                }
+            )
+
+        
+            restricted_red_data = self._create_restricted_red_batch(batch)
+
+            (command, stdoutpath, stderrpath) = prepare_execution(
+                restricted_red_data)
+            container = create_container_with_gpus(
+                client=self._client,
+                image=image,
+                command='/bin/sh',
+                available_runtimes=self._runtimes,
+                name=batch_id,
+                working_dir=CONTAINER_OUTPUT_DIR.as_posix(),
+                mem_limit=mem_limit,
+                memswap_limit=mem_limit,
+                gpus=gpus,
+                volumes={
+                    'experiment_files': {
+                        'bind': '/cc',
+                        'mode': 'rw',
+                    },
+                },
+                environment=environment,
+                network=self._network,
+                devices=devices,
+                cap_add=capabilities,
+                security_opt=security_opt,
+                ulimits=ulimits,
+                tty=True,
+                stdin_open=True,
+                auto_remove=False,
+            )
+            # copy restricted_red agent and restricted_red file to container
+            with self._create_batch_archive(batch) as tar_archive:
+                container.put_archive('/', tar_archive)
+
+            container.start()
+            try:
+                execution_result = docker_manager.run_command(
+                    container,
+                    command,
+                    stdoutpath=stdoutpath,
+                    stderrpath=stderrpath
+                )
+                data = {
+                    'command': command,
+                    'returnCode': None,
+                    'debugInfo': None,
+                    'executed': False,
+                    'stdout': None,
+                    'stderr': None,
+                    'inputs': None,
+                    'outputs': None,
+                    'state': 'succeeded'
+                }
+                
+                data['command'] = command
+                data['returnCode'] = execution_result.return_code
+                data['executed'] = True
+                if isinstance(stdoutpath, str):
+                    data['stdout'] =  stdoutpath
+                if isinstance(stderrpath, str):
+                    data['stderr'] = stderrpath
+            except Exception as e:
+                data['state'] = 'failed'
+                data['debugInfo'] = str(e)
+                
+            outputs_result = outputs(docker_manager, container)
+            
+            data['outputs'] = outputs_result
+            data['inputs'] = result['inputs']
+            container.stop(timeout=0)
+            container.remove(force=True, v=True)
+            
+            if (restricted_red_data.get('outputs')):
+                update_result = self._mongo.db['batches'].update_one(
+                    {
+                        '_id': ObjectId(batch_id),
+                        'state': 'processing'
+                    },
+                    {
+                        '$set': {
+                            'state': 'processing_output',
+                        },
+                        '$push': {
+                            'history': {
+                                'state': 'processing_output',
+                                'time': time.time(),
+                                'debugInfo': None,
+                                'node': self._node_name,
+                                'ccagent': None,
+                                # 'dockerStats': None
+                            }
+                        }
+                    }
+                )
+                output_connector_container = create_container_with_gpus(
+                    client=self._client,
+                    image=image,
+                    command='/bin/sh',
+                    available_runtimes=self._runtimes,
+                    name=batch_id + '_output',
+                    working_dir=CONTAINER_OUTPUT_DIR.as_posix(),
+                    mem_limit=mem_limit,
+                    memswap_limit=mem_limit,
+                    gpus=gpus,
+                    volumes={
+                        'experiment_files': {
+                            'bind': '/cc',
+                            'mode': 'rw',
+                        },
+                    },
+                    environment=environment,
+                    network=self._network,
+                    devices=devices,
+                    cap_add=capabilities,
+                    security_opt=security_opt,
+                    ulimits=ulimits,
+                    tty=True,
+                    stdin_open=True,
+                    auto_remove=False,
+                )  # type: Container
+                
+                with self._create_output_connector_batch_archive(batch) as tar_archive:
+                    output_connector_container.put_archive('/', tar_archive)
+                
+                output_connector_container.start()
+                output_container_result = None
+                try:
+                    output_container_result = docker_manager.run_command(
+                        output_connector_container, output_connector_command)
+                    
+                    outputConnector_result = output_container_result.get_agent_result_dict()
+                    if outputConnector_result['state'] != 'succeeded':
+                        debug_info = 'error sending output files through the output container.'
+                        if output_container_result is not None:
+                            docker_stats = output_container_result._stats
+                        else:
+                            docker_stats = None
+                        batch_failure(self._mongo, batch_id, debug_info, data,
+                                      batch['state'], docker_stats=docker_stats)
+                        self._log('Failed to send files with the output container:', e)
+                        return
+                    output_connector_container.stop(timeout=0)
+                    output_connector_container.remove(force=True, v=True)
+                except Exception as e:
+                    debug_info = 'error sending output files through the output container: {}'.format(e)
+                    batch_failure(self._mongo, batch_id, debug_info, data,
+                                  batch['state'], docker_stats=output_container_result._stats)
+                    self._log(
+                        'Failed to send files with the output container:', e)
+                    return
+                json_data = json.dumps(data)
+                container = create_container_with_gpus(
+                    client=self._client,
+                    image=image,
+                    command=f'sh -c \'echo "{json.dumps(json_data)}"\'',
+                    available_runtimes=self._runtimes,
+                    name=batch_id,
+                    working_dir=CONTAINER_OUTPUT_DIR.as_posix(),
+                    volumes={
+                        'experiment_files': {
+                            'bind': '/cc',
+                            'mode': 'rw',
+                        },
+                    },
+                    detach=True,
+                    mem_limit=mem_limit,
+                    memswap_limit=mem_limit,
+                    gpus=gpus,
+                    environment=environment,
+                    network=self._network,
+                    devices=devices,
+                    cap_add=capabilities,
+                    security_opt=security_opt,
+                    ulimits=ulimits
+                )  # type: Container
+                container.start()
+            else:
+                json_data = json.dumps(data)
+                container = create_container_with_gpus(
+                    client=self._client,
+                    image=image,
+                    command=f'sh -c \'echo "{json.dumps(json_data)}"\'',
+                    available_runtimes=self._runtimes,
+                    name=batch_id,
+                    working_dir=CONTAINER_OUTPUT_DIR.as_posix(),
+                    volumes={
+                        'experiment_files': {
+                            'bind': '/cc',
+                            'mode': 'rw',
+                        },
+                    },
+                    detach=True,
+                    mem_limit=mem_limit,
+                    memswap_limit=mem_limit,
+                    gpus=gpus,
+                    environment=environment,
+                    network=self._network,
+                    devices=devices,
+                    cap_add=capabilities,
+                    security_opt=security_opt,
+                    ulimits=ulimits
+                )  # type: Container
+                container.start()
+                
     def _create_restricted_red_batch(self, batch):
         """
         Creates a dictionary containing the data for a restricted_red batch.
