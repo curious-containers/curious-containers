@@ -20,7 +20,7 @@ DESCRIPTION = 'CC-Agent Copyright (C) 2018  Christoph Jansen. This software is d
 
 MODES = OrderedDict([
     ('inputConnector', {'main': input_connector_main,
-                        'description': INPUTCONNECTORDESCRIPTION})
+                        'description': INPUTCONNECTORDESCRIPTION}),
     ('restricted_red', {'main': restricted_red_main,
      'description': RESTRICTED_RED_DESCRIPTION}),
     ('outputConnector', {'main': output_connector_main,
