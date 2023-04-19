@@ -23,7 +23,7 @@ from requests.exceptions import ConnectionError, ReadTimeout
 from bson.objectid import ObjectId
 import bson.errors
 
-from cc_core.commons.gpu_info import GPUDevice, NVIDIA_GPU_VENDOR
+from cc_core.commons.gpu_info import GPUDevice, NVIDIA_GPU_VENDOR, set_nvidia_environment_variables
 from cc_agency.commons.schemas.callback import agent_result_schema, inputconnector_result_schema, outputconnector_result_schema
 from cc_agency.commons.secrets import get_experiment_secret_keys, fill_experiment_secrets, fill_batch_secrets, \
     get_batch_secret_keys, TrusteeClient
@@ -1442,13 +1442,6 @@ class ClientProxy:
 
         # set image
         image = experiment['container']['settings']['image']['url']
-
-        # command = [
-        #     'python3',
-        #     CONTAINER_AGENT_PATH.as_posix(),
-        #     CONTAINER_RESTRICTED_RED_FILE_PATH.as_posix(),
-        #     '--outputs',
-        # ]
         
         input_connector_command = _create_connector_command(
             ConnectorType.Input)
@@ -1456,13 +1449,9 @@ class ClientProxy:
         if experiment.get('execution', {}).get('settings', {}).get('disableConnectorValidation'):
             output_connector_command = _create_connector_command(
                 ConnectorType.Output, True)
-            # command.append('--disable-connector-validation')
         else:
             output_connector_command = _create_connector_command(
                 ConnectorType.Output, False)
-
-        # if experiment.get('execution', {}).get('settings', {}).get('disableConnectorValidation'):
-        #     command.append('--disable-connector-validation')
 
         ram = experiment['container']['settings']['ram']
         mem_limit = '{}m'.format(ram)
@@ -1480,40 +1469,7 @@ class ClientProxy:
         existing_container = self._batch_containers(None).get(batch_id)
         if existing_container is not None:
             existing_container.remove(force=True)
-
-        # the user argument is not set to use the user specified by the docker image
-        # container = create_container_with_gpus(
-        #     client=self._client,
-        #     image=image,
-        #     command=command,
-        #     available_runtimes=self._runtimes,
-        #     name=batch_id,
-        #     working_dir=CONTAINER_OUTPUT_DIR.as_posix(),
-        #     detach=True,
-        #     mem_limit=mem_limit,
-        #     memswap_limit=mem_limit,
-        #     gpus=gpus,
-        #     volumes={
-        #         'experiment_files': {
-        #             'bind': '/cc',
-        #             'mode': 'rw',
-        #         },
-        #     },
-        #     environment=environment,
-        #     network=self._network,
-        #     devices=devices,
-        #     cap_add=capabilities,
-        #     security_opt=security_opt,
-        #     ulimits=ulimits
-        # )  # type: Container
-
-        # # copy restricted_red agent and restricted_red file to container
-        # with self._create_batch_archive(batch) as tar_archive:
-        #     container.put_archive('/', tar_archive)
-
-        # container.start()
         
-        # the user argument is not set to use the user specified by the docker image
         docker_manager = DockerManager()
 
         input_container = create_container_with_gpus(
@@ -1589,9 +1545,7 @@ class ClientProxy:
                 }
             )
 
-        # only run the docker container, if the batch was successfully updated
-        # if update_result.modified_count == 2:
-        #     self._run_container(batch, experiment)
+        
             restricted_red_data = self._create_restricted_red_batch(batch)
 
             (command, stdoutpath, stderrpath) = prepare_execution(
@@ -1634,8 +1588,6 @@ class ClientProxy:
                     stdoutpath=stdoutpath,
                     stderrpath=stderrpath
                 )
-                # Remove container.wait() as it causes the container to exit
-                # container.wait()
                 data = {
                     'command': command,
                     'returnCode': None,
@@ -1665,8 +1617,6 @@ class ClientProxy:
             data['inputs'] = result['inputs']
             container.stop(timeout=0)
             container.remove(force=True, v=True)
-            
-            
             
             if (restricted_red_data.get('outputs')):
                 update_result = self._mongo.db['batches'].update_one(
