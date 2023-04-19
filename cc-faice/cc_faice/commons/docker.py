@@ -61,10 +61,21 @@ class AgentExecutionResult:
 
         :raise AgentError: If the stdout of the agent is not valid json
         """
+        if self._stdout is None:
+            return
+        
+        if isinstance(self._stdout, dict):
+            for key, value in self._stdout.items():
+                self._stdout[key] = value.strip('\n')
+            return self._stdout
+
         if self._parsed_stdout is None:
             try:
                 self._parsed_stdout = json.loads(self._stdout)
             except (json.JSONDecodeError, TypeError):
+                if isinstance(self._stdout, str):
+                        self._stdout = self._stdout.strip('\n')
+                        return self._stdout                        
                 raise AgentError(
                     'Internal Error. Could not parse stdout of agent.\n'
                     'Agent stdout:\n{}'
@@ -85,6 +96,8 @@ class AgentExecutionResult:
         return self._stats
 
     def was_user_process_executed(self):
+        if self.get_agent_result_dict() is None:
+            return False
         return 'returnCode' in self.get_agent_result_dict()
 
 
@@ -92,11 +105,14 @@ class DockerManager:
     def __init__(self):
         try:
             self._client = docker.from_env()
-            info = self._client.info()  # This raises a ConnectionError, if the docker socket was not found
+            # This raises a ConnectionError, if the docker socket was not found
+            info = self._client.info()
         except ConnectionError:
-            raise DockerException('Could not connect to docker socket. Is the docker daemon running?')
+            raise DockerException(
+                'Could not connect to docker socket. Is the docker daemon running?')
         except DockerException as e:
-            raise DockerException('Could not create docker client from environment.\n{}'.format(str(e)))
+            raise DockerException(
+                'Could not create docker client from environment.\n{}'.format(str(e)))
 
         self._runtimes = info.get('Runtimes')
 
@@ -123,9 +139,12 @@ class DockerManager:
             image,
             ram,
             working_directory,
+            volumes,
             gpus=None,
             environment=None,
-            enable_fuse=False
+            enable_fuse=False,
+
+
     ):
         """
         Creates a docker container with the given arguments. This docker container is running endlessly until
@@ -141,6 +160,8 @@ class DockerManager:
         :type ram: int
         :param working_directory: The working directory inside the docker container
         :type working_directory: PurePosixPath
+        :param volumes: A list of host and container volumes to be mounted
+        :type volumes: List[Volume]
         :param gpus: A specification of gpus to enable in this docker container
         :type gpus: List[GPUDevice]
         :param environment: A dictionary containing environment variables, which should be set inside the container
@@ -162,7 +183,8 @@ class DockerManager:
 
         gpu_ids = None
         if gpus:
-            set_nvidia_environment_variables(environment, map(lambda gpu: gpu.device_id, gpus))
+            set_nvidia_environment_variables(
+                environment, map(lambda gpu: gpu.device_id, gpus))
             gpu_ids = [gpu.device_id for gpu in gpus]
 
         # enable fuse
@@ -179,6 +201,7 @@ class DockerManager:
             command='/bin/sh',
             gpus=gpu_ids,
             available_runtimes=self._runtimes,
+            volumes=volumes,
             name=name,
             # user='1000:1000',
             working_dir=working_directory.as_posix(),
@@ -187,7 +210,8 @@ class DockerManager:
             environment=environment,
             cap_add=capabilities,
             devices=devices,
-            ulimits=[Ulimit(name='nofile', soft=NOFILE_LIMIT, hard=NOFILE_LIMIT)],
+            ulimits=[Ulimit(name='nofile', soft=NOFILE_LIMIT,
+                            hard=NOFILE_LIMIT)],
             # needed to run the container endlessly
             tty=True,
             stdin_open=True,
@@ -210,7 +234,7 @@ class DockerManager:
         container.put_archive('/', archive)
 
     @staticmethod
-    def run_command(container, command, user=None, work_dir=None):
+    def run_command(container, command, user=None, work_dir=None, stdoutpath=None, stderrpath=None):
         """
         Runs the given command in the given container and waits for the execution to end.
 
@@ -223,7 +247,11 @@ class DockerManager:
         :type user: str or int
         :param work_dir: The working directory where to execute the command
         :type work_dir: str
-
+        :param stdoutpath: The path where to write the standard output of the command. If None, stdout is returned as a string.
+        :type stdoutpath: Union[str, None]
+        :param stderrpath: The path where to write the standard error of the command. If None, stderr is returned as a string.
+        :type stderrpath: Union[str, None]
+        
         :return: A agent execution result, representing the result of this container execution
         :rtype: AgentExecutionResult
         """
@@ -253,5 +281,29 @@ class DockerManager:
             stderr = logs[1].decode('utf-8')
 
         stats = container.stats(stream=False)
+        
+        if stdoutpath is not None and stdout is not None:
+            out_message = stdout.split(': ')[-1].strip()
+            command = f'sh -c \'echo "{out_message}" >> "{stdoutpath}"\''
+            container.exec_run(
+                cmd=command,
+                user=user,
+                workdir=work_dir,
+                stdout=True,
+                stderr=True,
+                demux=True
+            )
+            
+        if stderrpath is not None and stderr is not None:
+            error_message = stderr.split(': ')[-1].strip()
+            command = f'sh -c \'echo "{error_message}" >> "{stderrpath}"\''
+            container.exec_run(
+                cmd=command,
+                user=user,
+                workdir=work_dir,
+                stdout=True,
+                stderr=True,
+                demux=True
+            )
 
         return AgentExecutionResult(return_code, stdout, stderr, stats)

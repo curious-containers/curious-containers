@@ -7,13 +7,24 @@ from cc_core.version import VERSION
 from cc_core.agent.restricted_red.__main__ import main as restricted_red_main
 from cc_core.agent.restricted_red.__main__ import DESCRIPTION as RESTRICTED_RED_DESCRIPTION
 
+from cc_core.agent.connectors.input_connector.__main__ import main as input_connector_main
+from cc_core.agent.connectors.input_connector.__main__ import DESCRIPTION as INPUTCONNECTORDESCRIPTION
+
+from cc_core.agent.connectors.output_connector.__main__ import main as output_connector_main
+from cc_core.agent.connectors.output_connector.__main__ import DESCRIPTION as OUTPUTCONNECTORDESCRIPTION
+
 SCRIPT_NAME = 'ccagent'
 
 DESCRIPTION = 'CC-Agent Copyright (C) 2018  Christoph Jansen. This software is distributed under the AGPL-3.0 ' \
               'LICENSE and is part of the Curious Containers project (https://curious-containers.github.io/).'
 
 MODES = OrderedDict([
-    ('restricted_red', {'main': restricted_red_main, 'description': RESTRICTED_RED_DESCRIPTION})
+    ('inputConnector', {'main': input_connector_main,
+                        'description': INPUTCONNECTORDESCRIPTION}),
+    ('restricted_red', {'main': restricted_red_main,
+     'description': RESTRICTED_RED_DESCRIPTION}),
+    ('outputConnector', {'main': output_connector_main,
+                         'description': OUTPUTCONNECTORDESCRIPTION})
 ])
 
 
@@ -28,7 +39,8 @@ def main():
 
     sub_parser = None
     for key, val in MODES.items():
-        sub_parser = subparsers.add_parser(key, help=val['description'], add_help=False)
+        sub_parser = subparsers.add_parser(
+            key, help=val['description'], add_help=False)
 
     if len(sys.argv) < 2:
         parser.print_help()
@@ -36,7 +48,6 @@ def main():
 
     _ = parser.parse_known_args()
     sub_args = sub_parser.parse_known_args()
-
     mode = MODES[sub_args[1][0]]['main']
     sys.argv[0] = '{} {}'.format(SCRIPT_NAME, sys.argv[1])
     del sys.argv[1]
