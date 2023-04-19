@@ -12,7 +12,7 @@ REQ_TYPE = 'batches'
 
 
 def attach_args(parser):
-    parser.add_argument('id', type=str, metavar='ID', required=True,
+    parser.add_argument('id', type=str, metavar='ID',
                         help='The id of the experiment/batch.')
     parser.add_argument('--raw', action='store_true',
                         default=False, help='Show raw json object')    
