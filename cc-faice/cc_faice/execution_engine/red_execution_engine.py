@@ -11,7 +11,7 @@ from enum import Enum
 from uuid import uuid4
 from pathlib import PurePosixPath, Path
 
-from cc_core.commons.docker_utils import create_batch_archive, create_connector_archive, retrieve_file_archive, get_first_tarfile_member
+from cc_core.commons.docker_utils import create_connector_archive, retrieve_file_archive, get_first_tarfile_member
 from cc_core.commons.engines import engine_validation
 from cc_core.commons.exceptions import brief_exception_text, exception_format, AgentError, JobExecutionError
 from cc_core.commons.gpu_info import get_gpu_requirements, match_gpus, InsufficientGPUError
@@ -21,7 +21,7 @@ from cc_core.commons.red_secrets import get_secret_values
 
 from cc_faice.commons.docker import env_vars, DockerManager
 from red_val.red_validation import red_validation
-from cc_core.commons.preparation import prepare_execution, outputs
+from cc_core.commons.preparation import ConnectorManager, prepare_execution, outputs
 
 DESCRIPTION = 'Run an experiment as described in a REDFILE with restricted red agent in a docker container.'
 
@@ -407,22 +407,20 @@ def run_restricted_red_batch(
 
     container_name = str(uuid4())
 
-    executorCommand = _create_restricted_red_agent_command(
-        output_mode, disable_connector_validation)
-
-    inputConnectorCommand = _create_connector_command(ConnectorType.Input)
-    outputConnectorCommand = _create_connector_command(
+    input_connector_command = _create_connector_command(
+        ConnectorType.Input, disable_connector_validation)
+    output_connector_command = _create_connector_command(
         ConnectorType.Output, disable_connector_validation)
     output_connector_container = None
 
     is_mounting = define_is_mounting(restricted_red_batch.data, insecure)
-    environment = {
-        'CONNECTOR_HOST': 'http-connector'
-    }
+    # environment = {
+    #     'CONNECTOR_HOST': 'http-connector'
+    # }
 
     input_connector_container = docker_manager.create_container(
         image=docker_image,
-        name='http-input-connector',
+        name=f'input-connector_batch{batch_index}',
         working_directory=CONTAINER_OUTPUT_DIR,
         ram=ram,
         volumes={
@@ -435,25 +433,36 @@ def run_restricted_red_batch(
         environment=environment,
         enable_fuse=is_mounting,
     )
-    with create_connector_archive(restricted_red_batch.data['inputs'], "input") as connectorArchive:
-        docker_manager.put_archive(input_connector_container, connectorArchive)
+    with create_connector_archive(restricted_red_batch.data['inputs'], "input") as connector_archive:
+        docker_manager.put_archive(input_connector_container, connector_archive)
 
     # hack to make fuse work under osx
     if is_mounting:
         _fuse_workaround(input_connector_container, docker_manager)
 
     inputConnector_execution_result = docker_manager.run_command(
-        input_connector_container, inputConnectorCommand)
+        input_connector_container, input_connector_command)
 
     further_errors = FurtherExecutionErrors()
 
-    inputConnector_result = inputConnector_execution_result.get_agent_result_dict()
+    input_connector_result = inputConnector_execution_result.get_agent_result_dict()
+    
+    restricted_red_agent_result = {
+        'command': None,
+        'returnCode': None,
+        'debugInfo': None,
+        'executed': False,
+        'stdout': None,
+        'stderr': None,
+        'outputs': None,
+        'state': 'succeeded'
+    }
 
-    if inputConnector_result['state'] == 'succeeded':
+    if input_connector_result is None or input_connector_result['state'] == 'succeeded':
         input_connector_container.kill()
-
+        connector_manager = ConnectorManager()
         (command, cli_stdout, cli_stderr) = prepare_execution(
-            restricted_red_batch.data)
+            connector_manager, restricted_red_batch.data)
 
         container = docker_manager.create_container(
             name=container_name,
@@ -470,23 +479,7 @@ def run_restricted_red_batch(
             environment=environment
         )
         
-        # hack to make fuse work under osx
-        if is_mounting:
-            _fuse_workaround(container, docker_manager)
-            
-        restricted_red_agent_result = {
-            'command': command,
-            'returnCode': None,
-            'debugInfo': None,
-            'executed': False,
-            'stdout': None,
-            'stderr': None,
-            'outputs': None,
-            'state': 'succeeded'
-        }
-        
         try:
-
             execution_result = docker_manager.run_command(
                 container,
                 command,
@@ -508,8 +501,7 @@ def run_restricted_red_batch(
             restricted_red_agent_result['state'] = 'failed'
             restricted_red_agent_result['debugInfo'] = str(e)
         
-        
-        outputs_result = outputs(docker_manager, container)
+        outputs_result = outputs(connector_manager, docker_manager, container)
         further_errors = FurtherExecutionErrors()
         restricted_red_agent_result['outputs'] = outputs_result
 
@@ -550,10 +542,10 @@ def run_restricted_red_batch(
                         'stdout')
                     further_errors.retrieve_stderr = errors_handling_stdout_stderr.get(
                         'stderr')
-        if (restricted_red_batch.data.get('outputs')):
+        if restricted_red_batch.data.get('outputs'):
             output_connector_container = docker_manager.create_container(
                 image=docker_image,
-                name='http-output-connector',
+                name=f'output-connector_batch{batch_index}',
                 working_directory=CONTAINER_OUTPUT_DIR,
                 ram=ram,
                 volumes={
@@ -566,32 +558,37 @@ def run_restricted_red_batch(
                 environment=environment,
                 enable_fuse=is_mounting,
             )
-            outputConnectorData = {
+            output_connector_data = {
                 'cli': restricted_red_batch.data['cli'], 'outputs': restricted_red_batch.data['outputs']}
-            with create_connector_archive(outputConnectorData, "output") as connectorArchive:
+            with create_connector_archive(output_connector_data, "output") as connector_archive:
                 docker_manager.put_archive(
-                    output_connector_container, connectorArchive)
+                    output_connector_container, connector_archive)
 
-            # hack to make fuse work under osx
-            if is_mounting:
-                _fuse_workaround(output_connector_container, docker_manager)
-
-            outputConnector_execution_result = docker_manager.run_command(
-                output_connector_container, outputConnectorCommand)
+            output_connector_execution_result = docker_manager.run_command(
+                output_connector_container, output_connector_command)
 
             further_errors = FurtherExecutionErrors()
 
-            outputConnector_result = outputConnector_execution_result.get_agent_result_dict()
+            output_connector_result = output_connector_execution_result.get_agent_result_dict()
 
-            if outputConnector_result['state'] != 'succeeded':
+            if output_connector_result is None or output_connector_result['state'] != 'succeeded':
                 state = ExecutionResultType.Failed
 
             output_connector_container.kill()
+        
+        # kill the /bin/sh container
+        container.kill()
     else:
         state = ExecutionResultType.Failed
-
-    # kill the /bin/sh container
-    container.kill()
+        return ContainerExecutionResult(
+            state,
+            input_connector_command,
+            container_name,
+            restricted_red_agent_result,
+            None,
+            None,
+            further_errors
+        )
 
     if not leave_container:
         container.remove(force=True, v=True)
@@ -601,11 +598,9 @@ def run_restricted_red_batch(
 
     return ContainerExecutionResult(
         state,
-        executorCommand,
+        command,
         container_name,
         restricted_red_agent_result, 
-        # agent_execution_result.get_stderr(),
-        # agent_execution_result.get_stats(),
         execution_result.get_stderr(),
         execution_result.get_stats(),
         further_errors
@@ -757,8 +752,8 @@ def _create_restricted_red_agent_command(output_mode, disable_connector_validati
     return command
 
 
-def _create_connector_command(connectorType, disable_connector_validation = None):
-    if (connectorType == ConnectorType.Input):
+def _create_connector_command(connector_type, disable_connector_validation = None):
+    if (connector_type == ConnectorType.Input):
         command = [PYTHON_INTERPRETER, CONTAINER_INPUTCONNECTOR_PATH.as_posix(
         ), CONTAINER_INPUTCONNECTOR_FILE_PATH.as_posix()]
     else:

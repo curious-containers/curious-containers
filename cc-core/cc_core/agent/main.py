@@ -7,11 +7,11 @@ from cc_core.version import VERSION
 from cc_core.agent.restricted_red.__main__ import main as restricted_red_main
 from cc_core.agent.restricted_red.__main__ import DESCRIPTION as RESTRICTED_RED_DESCRIPTION
 
-from cc_core.agent.connectors.inputConnector.__main__ import main as intputConnectorMain
-from cc_core.agent.connectors.inputConnector.__main__ import DESCRIPTION as INPUTCONNECTORDESCRIPTION
+from cc_core.agent.connectors.input_connector.__main__ import main as input_connector_main
+from cc_core.agent.connectors.input_connector.__main__ import DESCRIPTION as INPUTCONNECTORDESCRIPTION
 
-from cc_core.agent.connectors.outputConnector.__main__ import main as outputConnectorMain
-from cc_core.agent.connectors.outputConnector.__main__ import DESCRIPTION as OUTPUTCONNECTORDESCRIPTION
+from cc_core.agent.connectors.output_connector.__main__ import main as output_connector_main
+from cc_core.agent.connectors.output_connector.__main__ import DESCRIPTION as OUTPUTCONNECTORDESCRIPTION
 
 SCRIPT_NAME = 'ccagent'
 
@@ -19,11 +19,11 @@ DESCRIPTION = 'CC-Agent Copyright (C) 2018  Christoph Jansen. This software is d
               'LICENSE and is part of the Curious Containers project (https://curious-containers.github.io/).'
 
 MODES = OrderedDict([
-    ('inputConnector', {'main': intputConnectorMain,
+    ('inputConnector', {'main': input_connector_main,
                         'description': INPUTCONNECTORDESCRIPTION})
     ('restricted_red', {'main': restricted_red_main,
      'description': RESTRICTED_RED_DESCRIPTION}),
-    ('outputConnector', {'main': outputConnectorMain,
+    ('outputConnector', {'main': output_connector_main,
                          'description': OUTPUTCONNECTORDESCRIPTION})
 ])
 

@@ -161,16 +161,24 @@ class ConnectorManager:
         return errors
 
 
-connector_manager = ConnectorManager()
-
-
-def outputs(docker_manager, container):
-    global connector_manager
+def outputs(connector_manager, docker_manager, container):
     connector_manager.check_outputs(docker_manager, container)
     return connector_manager.outputs_to_dict(docker_manager, container)
 
 
-def prepare_execution(restricted_red_data):
+def prepare_execution(connector_manager, restricted_red_data):
+    """
+    Prepares the execution of a restricted red command by generating the command string and configuring output connectors.
+
+    :param connector_manager: A connector manager instance used to import output connectors.
+    :type connector_manager: ConnectorManager
+
+    :param restricted_red_data: The restricted red data containing the command and its configuration.
+    :type restricted_red_data: dict
+
+    :return: A tuple containing the generated command string, the configured CLI stdout redirect, and the configured CLI stderr redirect.
+    :rtype: tuple
+    """
     output_mode = OutputMode.Directory
 
     base_command = restricted_red_data.get('command')

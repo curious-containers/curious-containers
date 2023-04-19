@@ -1,4 +1,3 @@
-import glob
 import hashlib
 import os
 import sys
@@ -154,7 +153,7 @@ class ConnectorManager:
         for runner in self._input_runners:
             runner.prepare_directory()
 
-    def validate_connectors(self, validate_outputs):
+    def validate_connectors(self):
         """
         Validates connectors.
 
@@ -1121,18 +1120,6 @@ def create_input_connector_runner(input_key, input_value, input_index, assert_cl
     )
 
     return connector_runner
-
-
-class ConnectorError(Exception):
-    pass
-
-
-class RedSpecificationError(Exception):
-    pass
-
-
-class JobSpecificationError(Exception):
-    pass
 
 
 def _is_connector_input_value(input_value):

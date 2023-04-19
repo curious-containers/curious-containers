@@ -196,6 +196,29 @@ def set_permissions_and_owner(tarinfo, permissions, uid=0, username='root'):
 
 
 def create_batch_archive(restricted_red_data):
+    """
+    Creates a tar archive that can be put into a cc_core container to execute the restricted red agent.
+    This archive contains the restricted red agent, a restricted red file, the outputs-directory and the
+    inputs-directory.
+    The restricted red file is filled with the given restricted red data.
+    The outputs-directory is an empty directory, with name 'outputs'
+    The inputs-directory is an empty directory, with name 'inputs'
+    The tar archive and the restricted red file are always in memory and never stored on the host filesystem.
+    All files and directories are owned by root.
+    The restricted red agent has read and execution permissions for others.
+    The restricted red file has read permissions set for others.
+    The directories outputs and inputs have read, write and execute permissions set for others.
+    The resulting archive is:
+    /cc
+    |-- /restricted_red_agent.py
+    |-- /restricted_red_file.json
+    |-- /outputs/
+    |-- /inputs/
+    :param restricted_red_data: The data to put into the restricted red file of the returned archive
+    :type restricted_red_data: dict
+    :return: A tar archive containing the restricted red agent, a restricted red file, and input/output directories
+    :rtype: io.BytesIO or bytes
+    """
     # create a buffer for the archive
     data_file = io.BytesIO()
 
@@ -234,16 +257,42 @@ def create_batch_archive(restricted_red_data):
     return data_file
 
 
-def create_connector_archive(restricted_red_data, connectorType):
-    if (connectorType == "input"):
-        connectorAgent = CONTAINER_INPUTCONNECTOR_PATH
-        connectorFile = CONTAINER_INPUTCONNECTOR_FILE_PATH
-        agent_path = get_inputConnector_host_path()
+def create_connector_archive(restricted_red_data, connector_type):
+    """
+    Creates a tar archive that can be put into a connector container to execute a connector agent.
+    This archive contains the connector agent, an input/output file, and the outputs-directory and the inputs-directory.
+    The input/output file is filled with the given restricted red data.
+    The outputs-directory is an empty directory, with name 'outputs'
+    The inputs-directory is an empty directory, with name 'inputs'
+    The tar archive and the input/output file are always in memory and never stored on the host filesystem.
+    All files and directories are owned by root.
+    The connector agent has read and execution permissions for others.
+    The input/output file has read permissions set for others.
+    The directories outputs and inputs have read, write and execute permissions set for others.
+    The resulting archive is:
+    /cc
+    |-- /inputConnector.py or /outConnector.py
+    |-- /input.json or /output.json
+    |-- /outputs/
+    |-- /inputs/
+
+    :param restricted_red_data: The data to put into the input/output file of the returned archive
+    :type restricted_red_data: dict
+    :param connectorType: The type of connector agent to create: "input" or "output"
+    :type connectorType: str
+    :return: A tar archive containing the connector agent, an input/output file, and input/output directories
+    :rtype: io.BytesIO
+    :raises ValueError: If the connectorType is not "input" or "output"
+    """
+    if (connector_type == "input"):
+        connector_agent = CONTAINER_INPUTCONNECTOR_PATH
+        connector_file = CONTAINER_INPUTCONNECTOR_FILE_PATH
+        agent_path = get_input_connector_host_path()
 
     else:
-        connectorAgent = CONTAINER_OUTCONNECTOR_PATH
-        connectorFile = CONTAINER_OUTPUTCONNECTOR_FILE_PATH
-        agent_path = get_outputConnector_host_path()
+        connector_agent = CONTAINER_OUTCONNECTOR_PATH
+        connector_file = CONTAINER_OUTPUTCONNECTOR_FILE_PATH
+        agent_path = get_output_connector_host_path()
 
     # create a buffer for the archive
     data_file = io.BytesIO()
@@ -252,7 +301,7 @@ def create_connector_archive(restricted_red_data, connectorType):
     with tarfile.open(mode='w', fileobj=data_file) as tar_file:
         # add restricted red agent to the archive
         agent_tarinfo = tar_file.gettarinfo(
-            str(agent_path), arcname=connectorAgent.as_posix())
+            str(agent_path), arcname=connector_agent.as_posix())
         set_permissions_and_owner(agent_tarinfo, stat.S_IROTH | stat.S_IXOTH)
         with agent_path.open('rb') as agent_file:
             tar_file.addfile(agent_tarinfo, agent_file)
@@ -261,7 +310,7 @@ def create_connector_archive(restricted_red_data, connectorType):
         restricted_red_batch_content = json.dumps(
             restricted_red_data).encode('utf-8')
         restricted_red_batch_tarinfo = tarfile.TarInfo(
-            connectorFile.as_posix())
+            connector_file.as_posix())
         restricted_red_batch_tarinfo.size = len(restricted_red_batch_content)
         set_permissions_and_owner(restricted_red_batch_tarinfo, stat.S_IROTH)
         tar_file.addfile(restricted_red_batch_tarinfo,
@@ -314,13 +363,13 @@ def get_restricted_red_agent_host_path():
     return Path(restricted_red_main.__file__)
 
 
-def get_inputConnector_host_path():
-    import cc_core.agent.connectors.inputConnector.__main__ as intputConnector_main
+def get_input_connector_host_path():
+    import cc_core.agent.connectors.input_connector.__main__ as intputConnector_main
     return Path(intputConnector_main.__file__)
 
 
-def get_outputConnector_host_path():
-    import cc_core.agent.connectors.outputConnector.__main__ as outputConnector_main
+def get_output_connector_host_path():
+    import cc_core.agent.connectors.output_connector.__main__ as outputConnector_main
     return Path(outputConnector_main.__file__)
 
 
@@ -371,6 +420,7 @@ def detect_nvidia_docker_gpus(client, runtimes):
             client,
             GPU_QUERY_IMAGE,
             command=command,
+            volumes=None,
             available_runtimes=runtimes,
             gpus='all'
         )

@@ -96,6 +96,8 @@ class AgentExecutionResult:
         return self._stats
 
     def was_user_process_executed(self):
+        if self.get_agent_result_dict() is None:
+            return False
         return 'returnCode' in self.get_agent_result_dict()
 
 
@@ -158,6 +160,8 @@ class DockerManager:
         :type ram: int
         :param working_directory: The working directory inside the docker container
         :type working_directory: PurePosixPath
+        :param volumes: A list of host and container volumes to be mounted
+        :type volumes: List[Volume]
         :param gpus: A specification of gpus to enable in this docker container
         :type gpus: List[GPUDevice]
         :param environment: A dictionary containing environment variables, which should be set inside the container
@@ -230,7 +234,7 @@ class DockerManager:
         container.put_archive('/', archive)
 
     @staticmethod
-    def run_command(container, command, user=None, work_dir=None, stdoutpath = None, stderrpath = None):
+    def run_command(container, command, user=None, work_dir=None, stdoutpath=None, stderrpath=None):
         """
         Runs the given command in the given container and waits for the execution to end.
 
@@ -243,7 +247,11 @@ class DockerManager:
         :type user: str or int
         :param work_dir: The working directory where to execute the command
         :type work_dir: str
-
+        :param stdoutpath: The path where to write the standard output of the command. If None, stdout is returned as a string.
+        :type stdoutpath: Union[str, None]
+        :param stderrpath: The path where to write the standard error of the command. If None, stderr is returned as a string.
+        :type stderrpath: Union[str, None]
+        
         :return: A agent execution result, representing the result of this container execution
         :rtype: AgentExecutionResult
         """
@@ -277,7 +285,7 @@ class DockerManager:
         if stdoutpath is not None and stdout is not None:
             out_message = stdout.split(': ')[-1].strip()
             command = f'sh -c \'echo "{out_message}" >> "{stdoutpath}"\''
-            return_code, logs = container.exec_run(
+            container.exec_run(
                 cmd=command,
                 user=user,
                 workdir=work_dir,
@@ -289,7 +297,7 @@ class DockerManager:
         if stderrpath is not None and stderr is not None:
             error_message = stderr.split(': ')[-1].strip()
             command = f'sh -c \'echo "{error_message}" >> "{stderrpath}"\''
-            return_code, logs = container.exec_run(
+            container.exec_run(
                 cmd=command,
                 user=user,
                 workdir=work_dir,
