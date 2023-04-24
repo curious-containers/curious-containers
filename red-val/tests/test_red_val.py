@@ -2,6 +2,7 @@ from red_val import __version__
 from ruamel.yaml import YAML
 yaml = YAML(typ='safe')
 from red_val.red_validation import get_variable_keys
+from red_val.red_variables import _extract_variable_keys
 
 def test_version():
     assert __version__ == '9.1.1'
@@ -31,3 +32,20 @@ def test_get_variable_keys():
     function_result = get_variable_keys(test_dict)
     function_result = str(function_result[0])
     assert function_result == actual_result
+
+def test_extract_variable_keys():
+    """
+    The test_extract_variable_keys function tests the _extract_variable_keys function by passing 
+    in a variable_string, key_string, and protected argument. 
+    :param None:
+    :return None:
+    """
+    variable_string = "The {{quick}} brown fox jumps over the lazy dog"
+    key_string = "test_dict"
+    protected = True
+    function_result =(_extract_variable_keys(variable_string, key_string, protected))
+    for element in function_result:
+        function_result = element
+        function_result = str(function_result)
+    expected_result = "quick"
+    assert function_result == expected_result
