@@ -2,7 +2,7 @@ from red_val import __version__
 from ruamel.yaml import YAML
 yaml = YAML(typ='safe')
 from red_val.red_validation import get_variable_keys
-from red_val.red_variables import _extract_variable_keys
+from red_val.red_variables import _extract_variable_keys, complete_variables
 
 def test_version():
     assert __version__ == '9.1.1'
@@ -49,3 +49,25 @@ def test_extract_variable_keys():
         function_result = str(function_result)
     expected_result = "quick"
     assert function_result == expected_result
+
+data = {
+    "name": "The {{adjective}} {{noun}}",
+    "age": "{{age}}"
+}
+variables = {
+    "adjective": "quick",
+    "noun": "brown fox",
+    "age": "5"
+}
+
+def test_complete_variables():
+    """
+    Test for the complete_variables function.
+    Checks if the function correctly completes variables in the data.
+    Test case:
+    - Test a dictionary with a string value containing a variable.
+    Expected result: The variable is replaced with the corresponding value.
+    """
+    expected_result = {"name": "The quick brown fox", "age": "5"}
+    complete_variables(data, variables)
+    assert data == expected_result
