@@ -120,6 +120,15 @@ conf_schema = {
             },
             'additionalProperties': False,
             'required': ['db', 'username', 'password']
+        },
+        'cloud': {
+            'type': 'object',
+            'properties': {
+                'cc_cloud_directory': {'type': 'string'},
+                'upload_directory': {'type': 'integer'},
+                'user_storage_limit': {'type': 'string'}
+            },
+            'additionalProperties': False
         }
     },
     'additionalProperties': False,
