@@ -21,7 +21,7 @@ def generate_command(base_command, cli_arguments, batch):
     command = base_command.copy()
 
     for cli_argument in cli_arguments:
-        batch_value = batch['inputs'].get(cli_argument.input_key)
+        batch_value = batch["inputs"].get(cli_argument.input_key)
         execution_argument = create_execution_argument(cli_argument, batch_value)
         command.extend(execution_argument)
 
@@ -44,7 +44,9 @@ def create_execution_argument(cli_argument, batch_value):
         if cli_argument.is_optional():
             return []
         else:
-            raise JobSpecificationError('Required argument "{}" is missing'.format(cli_argument.input_key))
+            raise JobSpecificationError(
+                'Required argument "{}" is missing'.format(cli_argument.input_key)
+            )
 
     argument_list = _create_argument_list(cli_argument, batch_value)
 
@@ -52,18 +54,20 @@ def create_execution_argument(cli_argument, batch_value):
     if argument_list and cli_argument.item_separator:
         argument_list = [cli_argument.item_separator.join(argument_list)]
 
-    return _argument_list_to_execution_argument(argument_list, cli_argument, batch_value)
+    return _argument_list_to_execution_argument(
+        argument_list, cli_argument, batch_value
+    )
 
 
 INPUT_CATEGORY_REPRESENTATION_MAPPER = {
-    InputType.InputCategory.File: lambda batch_value: batch_value['path'],
-    InputType.InputCategory.Directory: lambda batch_value: batch_value['path'],
+    InputType.InputCategory.File: lambda batch_value: batch_value["path"],
+    InputType.InputCategory.Directory: lambda batch_value: batch_value["path"],
     InputType.InputCategory.string: lambda batch_value: batch_value,
     InputType.InputCategory.int: lambda batch_value: str(batch_value),
     InputType.InputCategory.long: lambda batch_value: str(batch_value),
     InputType.InputCategory.float: lambda batch_value: str(batch_value),
     InputType.InputCategory.double: lambda batch_value: str(batch_value),
-    InputType.InputCategory.boolean: lambda batch_value: str(batch_value)
+    InputType.InputCategory.boolean: lambda batch_value: str(batch_value),
 }
 
 
@@ -80,20 +84,28 @@ def _create_argument_list(cli_argument, batch_value):
     argument_list = []
     if cli_argument.is_array():
         if not isinstance(batch_value, list):
-            raise JobSpecificationError('For input key "{}":\nDescription defines an array, '
-                                        'but job is not given as list'.format(cli_argument.input_key))
+            raise JobSpecificationError(
+                'For input key "{}":\nDescription defines an array, '
+                "but job is not given as list".format(cli_argument.input_key)
+            )
 
         # handle boolean arrays special
         if cli_argument.is_boolean():
             argument_list = _get_boolean_array_argument_list(cli_argument, batch_value)
         else:
             for sub_batch_value in batch_value:
-                r = INPUT_CATEGORY_REPRESENTATION_MAPPER[cli_argument.get_type_category()](sub_batch_value)
+                r = INPUT_CATEGORY_REPRESENTATION_MAPPER[
+                    cli_argument.get_type_category()
+                ](sub_batch_value)
                 argument_list.append(r)
     else:
         # do not insert anything for boolean
         if not cli_argument.is_boolean():
-            argument_list.append(INPUT_CATEGORY_REPRESENTATION_MAPPER[cli_argument.get_type_category()](batch_value))
+            argument_list.append(
+                INPUT_CATEGORY_REPRESENTATION_MAPPER[cli_argument.get_type_category()](
+                    batch_value
+                )
+            )
 
     return argument_list
 
@@ -109,7 +121,9 @@ def _get_boolean_array_argument_list(cli_argument, batch_value):
     argument_list = []
     if cli_argument.item_separator:
         for sub_batch_value in batch_value:
-            r = INPUT_CATEGORY_REPRESENTATION_MAPPER[cli_argument.get_type_category()](sub_batch_value)
+            r = INPUT_CATEGORY_REPRESENTATION_MAPPER[cli_argument.get_type_category()](
+                sub_batch_value
+            )
             argument_list.append(r)
     return argument_list
 
@@ -154,7 +168,9 @@ def _argument_list_to_execution_argument(argument_list, cli_argument, batch_valu
                     execution_argument.append(cli_argument.prefix)
                 else:
                     assert len(argument_list) == 1
-                    joined_argument = '{}{}'.format(cli_argument.prefix, argument_list[0])
+                    joined_argument = "{}{}".format(
+                        cli_argument.prefix, argument_list[0]
+                    )
                     execution_argument.append(joined_argument)
     else:
         execution_argument.extend(argument_list)
@@ -171,12 +187,18 @@ def get_cli_arguments(cli_inputs):
     """
     cli_arguments = []
     for input_key, cli_input_description in cli_inputs.items():
-        cli_arguments.append(CliArgument.from_cli_input_description(input_key, cli_input_description))
-    return sorted(cli_arguments, key=lambda cli_argument: cli_argument.argument_position)
+        cli_arguments.append(
+            CliArgument.from_cli_input_description(input_key, cli_input_description)
+        )
+    return sorted(
+        cli_arguments, key=lambda cli_argument: cli_argument.argument_position
+    )
 
 
 class CliArgument:
-    def __init__(self, input_key, argument_position, input_type, prefix, separate, item_separator):
+    def __init__(
+        self, input_key, argument_position, input_type, prefix, separate, item_separator
+    ):
         """
         Creates a new CliArgument.
 
@@ -195,30 +217,44 @@ class CliArgument:
         self.item_separator = item_separator
 
     def __repr__(self):
-        return 'CliArgument(\n\t{}\n)'.format('\n\t'.join(['input_key={}'.format(self.input_key),
-                                                           'argument_position={}'.format(self.argument_position),
-                                                           'input_type={}'.format(self.input_type),
-                                                           'prefix={}'.format(self.prefix),
-                                                           'separate={}'.format(self.separate),
-                                                           'item_separator={}'.format(self.item_separator)]))
+        return "CliArgument(\n\t{}\n)".format(
+            "\n\t".join(
+                [
+                    "input_key={}".format(self.input_key),
+                    "argument_position={}".format(self.argument_position),
+                    "input_type={}".format(self.input_type),
+                    "prefix={}".format(self.prefix),
+                    "separate={}".format(self.separate),
+                    "item_separator={}".format(self.item_separator),
+                ]
+            )
+        )
 
     @staticmethod
-    def new_positional_argument(input_key, input_type, input_binding_position, item_separator):
-        return CliArgument(input_key=input_key,
-                           argument_position=CliArgumentPosition.new_positional_argument(input_binding_position),
-                           input_type=input_type,
-                           prefix=None,
-                           separate=False,
-                           item_separator=item_separator)
+    def new_positional_argument(
+        input_key, input_type, input_binding_position, item_separator
+    ):
+        return CliArgument(
+            input_key=input_key,
+            argument_position=CliArgumentPosition.new_positional_argument(
+                input_binding_position
+            ),
+            input_type=input_type,
+            prefix=None,
+            separate=False,
+            item_separator=item_separator,
+        )
 
     @staticmethod
     def new_named_argument(input_key, input_type, prefix, separate, item_separator):
-        return CliArgument(input_key=input_key,
-                           argument_position=CliArgumentPosition.new_named_argument(),
-                           input_type=input_type,
-                           prefix=prefix,
-                           separate=separate,
-                           item_separator=item_separator)
+        return CliArgument(
+            input_key=input_key,
+            argument_position=CliArgumentPosition.new_named_argument(),
+            input_type=input_type,
+            prefix=prefix,
+            separate=separate,
+            item_separator=item_separator,
+        )
 
     def is_array(self):
         return self.input_type.is_array()
@@ -248,18 +284,22 @@ class CliArgument:
         :param cli_input_description: red_data['cli']['inputs'][input_key]
         :return: A new CliArgument
         """
-        input_binding = cli_input_description['inputBinding']
-        input_binding_position = input_binding.get('position', 0)
-        prefix = input_binding.get('prefix')
-        separate = input_binding.get('separate', True)
-        item_separator = input_binding.get('itemSeparator')
+        input_binding = cli_input_description["inputBinding"]
+        input_binding_position = input_binding.get("position", 0)
+        prefix = input_binding.get("prefix")
+        separate = input_binding.get("separate", True)
+        item_separator = input_binding.get("itemSeparator")
 
-        input_type = InputType.from_string(cli_input_description['type'])
+        input_type = InputType.from_string(cli_input_description["type"])
 
         if prefix:
-            arg = CliArgument.new_named_argument(input_key, input_type, prefix, separate, item_separator)
+            arg = CliArgument.new_named_argument(
+                input_key, input_type, prefix, separate, item_separator
+            )
         else:
-            arg = CliArgument.new_positional_argument(input_key, input_type, input_binding_position, item_separator)
+            arg = CliArgument.new_positional_argument(
+                input_key, input_type, input_binding_position, item_separator
+            )
         return arg
 
 
@@ -286,7 +326,9 @@ class CliArgumentPosition:
         :param binding_position: The input position of the argument
         :return: A new CliArgumentPosition with position_type Positional
         """
-        return CliArgumentPosition(CliArgumentPosition.CliArgumentPositionType.Positional, binding_position)
+        return CliArgumentPosition(
+            CliArgumentPosition.CliArgumentPositionType.Positional, binding_position
+        )
 
     @staticmethod
     def new_named_argument():
@@ -298,18 +340,31 @@ class CliArgumentPosition:
         return CliArgumentPosition(CliArgumentPosition.CliArgumentPositionType.Named, 0)
 
     def is_positional(self):
-        return self.argument_position_type is CliArgumentPosition.CliArgumentPositionType.Positional
+        return (
+            self.argument_position_type
+            is CliArgumentPosition.CliArgumentPositionType.Positional
+        )
 
     def is_named(self):
-        return self.argument_position_type is CliArgumentPosition.CliArgumentPositionType.Named
+        return (
+            self.argument_position_type
+            is CliArgumentPosition.CliArgumentPositionType.Named
+        )
 
     def __eq__(self, other):
-        return (self.argument_position_type is other.argument_position_type) \
-               and (self.binding_position == other.binding_position)
+        return (self.argument_position_type is other.argument_position_type) and (
+            self.binding_position == other.binding_position
+        )
 
     def __lt__(self, other):
-        if self.argument_position_type is CliArgumentPosition.CliArgumentPositionType.Positional:
-            if other.argument_position_type is CliArgumentPosition.CliArgumentPositionType.Positional:
+        if (
+            self.argument_position_type
+            is CliArgumentPosition.CliArgumentPositionType.Positional
+        ):
+            if (
+                other.argument_position_type
+                is CliArgumentPosition.CliArgumentPositionType.Positional
+            ):
                 return self.binding_position < other.binding_position
             else:
                 return True
@@ -317,5 +372,6 @@ class CliArgumentPosition:
             return False
 
     def __repr__(self):
-        return 'CliArgumentPosition(argument_position_type={}, binding_position={})' \
-            .format(self.argument_position_type, self.binding_position)
+        return "CliArgumentPosition(argument_position_type={}, binding_position={})".format(
+            self.argument_position_type, self.binding_position
+        )
