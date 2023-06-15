@@ -28,7 +28,13 @@ def separate_secrets_batch(batch):
                 secrets[key] = secret
 
             cwl_val['connector']['access'] = key
-
+    
+    if 'cloud' in batch:
+        secret = batch['cloud']['auth']
+        key = str(uuid4())
+        secrets[key] = secret
+        batch['cloud']['auth'] = key
+    
     return batch, secrets
 
 
@@ -54,6 +60,8 @@ def get_batch_secret_keys(batch):
             if not isinstance(cwl_val, dict):
                 continue
             keys.append(cwl_val['connector']['access'])
+    if 'cloud' in batch:
+        keys.append(batch['cloud']['auth'])
     return keys
 
 
@@ -67,6 +75,10 @@ def fill_batch_secrets(batch, secrets):
             key = cwl_val['connector']['access']
             secret = secrets[key]
             cwl_val['connector']['access'] = secret
+    if 'cloud' in batch:
+        key = batch['cloud']['auth']
+        secret = secrets[key]
+        batch['cloud']['auth'] = secret
     return batch
 
 

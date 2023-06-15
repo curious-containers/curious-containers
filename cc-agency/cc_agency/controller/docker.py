@@ -1128,7 +1128,7 @@ class ClientProxy:
         devices = []
         capabilities = []
         security_opt = []
-        if batch['mount']:
+        if batch['mount'] or (batch.get('cloud') and batch['cloud'].get('enable')):
             devices.append('/dev/fuse')
             capabilities.append('SYS_ADMIN')
             security_opt.append('apparmor:unconfined')
@@ -1232,7 +1232,9 @@ class ClientProxy:
             'inputs': batch['inputs'],
             'outputs': batch['outputs']
         }
-
+        if 'cloud' in batch:
+            red_data['cloud'] = batch['cloud']
+        
         restricted_red_batches = convert_red_to_restricted_red(red_data)
 
         if len(restricted_red_batches) != 1:

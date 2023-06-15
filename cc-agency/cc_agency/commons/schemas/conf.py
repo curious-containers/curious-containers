@@ -124,11 +124,24 @@ conf_schema = {
         'cloud': {
             'type': 'object',
             'properties': {
-                'cc_cloud_directory': {'type': 'string'},
-                'upload_directory': {'type': 'integer'},
-                'user_storage_limit': {'type': 'string'}
+                'enable': {'type': 'boolean'},
+                'host': {'type': 'string'},
+                'sshPort': {'type': 'integer'},
+                'httpPort': {'type': 'integer'},
+                'httpsPort': {'type': 'integer'},
+                'enableHttps': {'type': 'boolean'},
+                'requireHttps': {'type': 'boolean'},
+                'disableStrictHostKeyChecking': {'type': 'boolean'},
+                'publicsshKey': {'type': 'string'},
+                'username': {'type': 'string'},
+                'password': {'type': 'string'},
+                'upload_directory_name': {'type': 'string'},
+                'userhome_directory': {'type': 'string'},
+                'filesystem_directory': {'type': 'string'},
+                'user_storage_limit': {'type': 'integer'},
             },
-            'additionalProperties': False
+            'additionalProperties': False,
+            'required': ['enable', 'host', 'username', 'password']
         }
     },
     'additionalProperties': False,

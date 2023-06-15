@@ -59,6 +59,8 @@ def _prepare_red_data(data, user, disable_retry, disable_connector_validation):
             'inputs': data['inputs'],
             'outputs': data['outputs']
         }]
+        if 'cloud' in data:
+            raw_batches[0]['cloud'] = data['cloud']
 
     batches = []
 
@@ -87,14 +89,16 @@ def _prepare_red_data(data, user, disable_retry, disable_connector_validation):
             STDOUT_FILE_KEY: None,
             STDERR_FILE_KEY: None
         }
+        if 'cloud' in rb:
+            batch['cloud'] = rb['cloud']
         batch, additional_secrets = separate_secrets_batch(batch)
         secrets.update(additional_secrets)
         batches.append(batch)
-
+    
     return experiment, batches, secrets
 
 
-def red_routes(app, mongo, auth, controller, trustee_client):
+def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
     """
     Creates the red broker endpoints.
 
@@ -174,7 +178,12 @@ def red_routes(app, mongo, auth, controller, trustee_client):
             _ = convert_red_to_restricted_red(data)
         except Exception:
             raise BadRequest('\n'.join(exception_format(secret_values=secret_values)))
-
+        
+        if 'cloud' in data:
+            if not cloud_proxy.is_available():
+                raise BadRequest('CC-Cloud is not available.')
+            data = cloud_proxy.complete_cloud_red_data(data, user.username)
+        
         experiment, batches, secrets = _prepare_red_data(data, user, disable_retry, disable_connector_validation)
 
         response = trustee_client.store(secrets)
@@ -186,7 +195,7 @@ def red_routes(app, mongo, auth, controller, trustee_client):
 
         for batch in batches:
             batch['experimentId'] = experiment_id
-
+        
         mongo.db['batches'].insert_many(batches)
 
         controller.send_json({'destination': 'scheduler'})

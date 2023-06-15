@@ -560,13 +560,22 @@ class Scheduler:
         # check mounting
         mount_connectors = red_get_mount_connectors_from_inputs(next_batch['inputs'])
         is_mounting = bool(mount_connectors)
+        
+        # check cloud
+        if 'cloud' in next_batch:
+            is_cloud = bool(next_batch['cloud']['enable'])
+        else:
+            is_cloud = False
 
         allow_insecure_capabilities = self._conf.d['controller']['docker'].get('allow_insecure_capabilities', False)
 
-        if not allow_insecure_capabilities and is_mounting:
+        if not allow_insecure_capabilities and (is_mounting or is_cloud):
             # set state to failed, because insecure_capabilities are not allowed but needed, by this batch.
-            debug_info = 'FUSE support for this agency is disabled, but the following input/output-keys are ' \
-                         'configured to mount inside a docker container.{}{}'.format(os.linesep, mount_connectors)
+            if is_mounting:
+                debug_info = 'FUSE support for this agency is disabled, but the following input/output-keys are ' \
+                            'configured to mount inside a docker container.{}{}'.format(os.linesep, mount_connectors)
+            else:
+                debug_info = 'FUSE support for this agency is disabled, but cc-cloud is enabled.'
             batch_failure(
                 self._mongo,
                 batch_id,
@@ -633,7 +642,7 @@ class Scheduler:
         cursor = self._mongo.db['batches'].aggregate([
             {'$match': {'state': 'registered'}},
             {'$sort': {'registrationTime': 1}},
-            {'$project': {'experimentId': 1, 'inputs': 1, 'outputs': 1, 'state': 1}}
+            {'$project': {'experimentId': 1, 'inputs': 1, 'outputs': 1, 'cloud': 1, 'state': 1}}
         ])
         for b in cursor:
             yield b
