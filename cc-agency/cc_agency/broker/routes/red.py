@@ -179,7 +179,7 @@ def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
         except Exception:
             raise BadRequest('\n'.join(exception_format(secret_values=secret_values)))
         
-        if 'cloud' in data:
+        if 'cloud' in data and data['cloud'].get('enable'):
             if not cloud_proxy.is_available():
                 raise BadRequest('CC-Cloud is not available.')
             data = cloud_proxy.complete_cloud_red_data(data, user.username)
