@@ -125,12 +125,8 @@ conf_schema = {
             'type': 'object',
             'properties': {
                 'enable': {'type': 'boolean'},
-                'host': {'type': 'string'},
+                'internal_url': {'type': 'string'},
                 'sshPort': {'type': 'integer'},
-                'httpPort': {'type': 'integer'},
-                'httpsPort': {'type': 'integer'},
-                'enableHttps': {'type': 'boolean'},
-                'requireHttps': {'type': 'boolean'},
                 'disableStrictHostKeyChecking': {'type': 'boolean'},
                 'publicsshKey': {'type': 'string'},
                 'username': {'type': 'string'},
@@ -141,7 +137,7 @@ conf_schema = {
                 'user_storage_limit': {'type': 'integer'},
             },
             'additionalProperties': False,
-            'required': ['enable', 'host', 'username', 'password']
+            'required': ['enable', 'internal_url', 'username', 'password']
         }
     },
     'additionalProperties': False,

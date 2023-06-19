@@ -3,20 +3,17 @@ import requests
 from requests.auth import HTTPBasicAuth
 from contextlib import closing
 from werkzeug.exceptions import InternalServerError
+from urllib.parse import urlparse
 
 class CloudProxy():
     """
     Provides functionality for interacting with a cloud proxy.
 
     :ivar bool enable: Indicates if cc-cloud is enabled.
-    :ivar str host: The host address of the cc-cloud service.
+    :ivar str internal_url: The internel url address of the cc-cloud service.
     :ivar str admin_username: The username for the a admin user, that will be used for the communication with the cc-cloud service.
     :ivar str admin_password: The password for the a admin user, that will be used for the communication with the cc-cloud service.
-    :ivar bool enableHttps: Indicates if HTTPS is enabled for the cc-cloud service.
-    :ivar bool requireHttps: Indicates if HTTPS is required for the cc-cloud service.
     :ivar str sshPort: The SSH port used by the cc-cloud service.
-    :ivar str httpPort: The HTTP port used by the cc-cloud service.
-    :ivar str httpsPort: The HTTPS port used by the cc-cloud service.
     :ivar str upload_directory_name: The name of the upload directory on the cc-cloud service.
     :ivar bool disableStrictHostKeyChecking: Indicates if strict host key checking is disabled when mounting via sshfs.
     :ivar str publicsshKey: The public SSH key associated with the cc-cloud server.
@@ -38,15 +35,11 @@ class CloudProxy():
         :type auth: object
         """
         self.enable = conf.d['cloud']['enable']
-        self.host = conf.d['cloud']['host']
+        self.internal_url = conf.d['cloud']['internal_url']
         self.admin_username = conf.d['cloud']['username']
         self.admin_password = conf.d['cloud']['password']
         
-        self.enableHttps = conf.d['cloud'].get('enableHttps', True)
-        self.requireHttps = conf.d['cloud'].get('requireHttps', False)
         self.sshPort = conf.d['cloud'].get('sshPort', '22')
-        self.httpPort = conf.d['cloud'].get('httpPort', '80')
-        self.httpsPort = conf.d['cloud'].get('httpsPort', '443')
         self.upload_directory_name = conf.d['cloud'].get('upload_directory_name', 'cloud')
         self.disableStrictHostKeyChecking = conf.d['cloud'].get('disableStrictHostKeyChecking', False)
         self.publicsshKey = conf.d['cloud'].get('publicsshKey', '')
@@ -72,15 +65,16 @@ class CloudProxy():
         if not self.enable:
             return False
         
-        check_ports = [self.sshPort]
-        if self.enableHttps:
-            check_ports.append(self.httpsPort)
-        else:
-            check_ports.append(self.httpPort)
+        parsed_url = urlparse(self.internal_url)
+        check_ports = [
+            self.sshPort,
+            parsed_url.port
+        ]
         
+        host = urlparse(self.internal_url).hostname
         for port in check_ports:
             with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
-                if sock.connect_ex((self.host, port)) != 0:
+                if sock.connect_ex((host, port)) != 0:
                     return False
         return True
     
@@ -92,16 +86,9 @@ class CloudProxy():
         :type username: str
         :return: True if the user was created successfully, False otherwise.
         :rtype: bool
-        """
-        if self.enableHttps:
-            web_protocol = 'https'
-            web_port = self.httpsPort
-        else:
-            web_protocol = 'http'
-            web_port = self.httpPort
-        
+        """        
         parameter = f"username={username}"
-        url = f"{web_protocol}://{self.host}:{web_port}/{self.CREATE_USER_ENDPOINT}?{parameter}"
+        url = f"{self.internal_url.rstrip('/')}/{self.CREATE_USER_ENDPOINT}?{parameter}"
         
         response = requests.get(
             url,
@@ -130,7 +117,7 @@ class CloudProxy():
             'ssh_user': cloud_user['ssh_user'],
             'password':  cloud_user['ssh_password']
         }
-        red_data['cloud']['host'] = self.host
+        red_data['cloud']['host'] = urlparse(self.internal_url).hostname
         red_data['cloud']['sshPort'] = self.sshPort
         red_data['cloud']['upload_directory_name'] = self.upload_directory_name
         red_data['cloud']['disableStrictHostKeyChecking'] = self.disableStrictHostKeyChecking
