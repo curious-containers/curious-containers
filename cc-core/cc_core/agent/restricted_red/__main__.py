@@ -244,7 +244,7 @@ def mount_cloud(cloud):
             disableStrictHostKeyChecking = '-o StrictHostKeyChecking=no'
         else:
             append_known_host(cloud['host'], cloud['publicsshKey'])
-        os.system(f"echo {cloud['auth']['password']} | sshfs -o sshfs_sync -o password_stdin {disableStrictHostKeyChecking} {cloud['auth']['ssh_user']}@{cloud['host']}:/{cloud['upload_directory_name']} {cloud['mountDir']}")
+        os.system(f"echo {cloud['auth']['password']} | sshfs -p {cloud['auth']['sshPort']} -o sshfs_sync -o password_stdin {disableStrictHostKeyChecking} {cloud['auth']['ssh_user']}@{cloud['host']}:/{cloud['upload_directory_name']} {cloud['mountDir']}")
 
 
 def append_known_host(host, public_key):
