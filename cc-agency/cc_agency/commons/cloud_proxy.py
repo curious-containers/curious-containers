@@ -34,19 +34,22 @@ class CloudProxy():
         :param auth: The authentication object for creating cloud users.
         :type auth: object
         """
-        self.enable = conf.d['cloud']['enable']
-        self.internal_url = conf.d['cloud']['internal_url']
-        self.admin_username = conf.d['cloud']['username']
-        self.admin_password = conf.d['cloud']['password']
-        
-        self.sshPort = conf.d['cloud'].get('sshPort', '22')
-        self.upload_directory_name = conf.d['cloud'].get('upload_directory_name', 'cloud')
-        self.disableStrictHostKeyChecking = conf.d['cloud'].get('disableStrictHostKeyChecking', False)
-        self.publicsshKey = conf.d['cloud'].get('publicsshKey', '')
-        
-        self.mongo = mongo
-        self.auth = auth
-        self.update_admin_cloud_user()
+        if 'cloud' in conf.d:
+            self.enable = conf.d['cloud']['enable']
+            self.internal_url = conf.d['cloud']['internal_url']
+            self.admin_username = conf.d['cloud']['username']
+            self.admin_password = conf.d['cloud']['password']
+            
+            self.sshPort = conf.d['cloud'].get('sshPort', '22')
+            self.upload_directory_name = conf.d['cloud'].get('upload_directory_name', 'cloud')
+            self.disableStrictHostKeyChecking = conf.d['cloud'].get('disableStrictHostKeyChecking', False)
+            self.publicsshKey = conf.d['cloud'].get('publicsshKey', '')
+            
+            self.mongo = mongo
+            self.auth = auth
+            self.update_admin_cloud_user()
+        else:
+            self.enable = False
     
     def update_admin_cloud_user(self):
         """
