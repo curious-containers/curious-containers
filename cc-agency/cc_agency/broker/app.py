@@ -12,6 +12,7 @@ from cc_agency.commons.secrets import TrusteeClient
 from cc_agency.broker.auth import Auth
 from cc_agency.broker.routes.red import red_routes
 from cc_agency.broker.routes.nodes import nodes_routes
+from cc_agency.broker.routes.admin import admin_routes
 
 
 DESCRIPTION = 'CC-Agency Broker.'
@@ -58,5 +59,7 @@ def get_version():
 
 red_routes(app, mongo, auth, controller, trustee_client)
 nodes_routes(app, mongo, auth)
+admin_routes(app, auth)
+
 
 controller.send_json({'destination': 'scheduler'})

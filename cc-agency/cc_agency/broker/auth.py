@@ -55,6 +55,13 @@ class Auth:
             'is_admin': is_admin
         }
         self._mongo.db['users'].update_one({'username': username}, {'$set': user}, upsert=True)
+    
+    def remove_user(self, username):
+        self._mongo.db['users'].delete_one({'username': username})
+    
+    def set_user_password(self, username, password):
+        user = self._mongo.db['users'].find_one({'username': username})
+        self.create_user(username, password, user['is_admin'])
 
     @staticmethod
     def _create_unauthorized(description, realm=DEFAULT_REALM):
