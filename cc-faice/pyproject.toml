@@ -12,6 +12,7 @@ description = "FAICE (Fair Collaboration and Experiments) is part of the Curious
 python = "^3.7"
 cc-core = "~9.1"
 red-fill = "~9.1"
+urllib3 = "^1.26"
 
 [tool.poetry.dev-dependencies]
 

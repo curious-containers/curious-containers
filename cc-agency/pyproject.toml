@@ -15,6 +15,7 @@ pyzmq = "^23.0"
 pymongo = "^3.7"
 cryptography = "^41.0"
 cc-core = "~9.1"
+urllib3 = "^1.26"
 
 [tool.poetry.dev-dependencies]
 
