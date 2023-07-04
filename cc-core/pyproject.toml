@@ -12,6 +12,7 @@ description = "CC-Core is part of the Curious Containers project. It contains sh
 python = "^3.7"
 docker = "^6.0"
 "ruamel.yaml" = "^0.17"
+urllib3 = "^1.26"
 
 red-val = "~9.1"
 
