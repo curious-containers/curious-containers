@@ -24,6 +24,7 @@ from red_val.red_types import InputType
 
 CONTAINER_OUTPUT_DIR = PurePosixPath('/cc/outputs')
 CONTAINER_INPUT_DIR = PurePosixPath('/cc/inputs')
+CONTAINER_CLOUD_DIR = PurePosixPath('/cc/cloud')
 CONTAINER_AGENT_PATH = PurePosixPath('/cc/restricted_red_agent.py')
 CONTAINER_RESTRICTED_RED_FILE_PATH = PurePosixPath('/cc/restricted_red_file.json')
 
@@ -131,7 +132,8 @@ def create_restricted_red_batch(command, batch, cli_inputs, cli_outputs, cli_std
             'stderr': stderr_file
         },
         'inputs': batch['inputs'],
-        'outputs': batch['outputs']
+        'outputs': batch['outputs'],
+        'cloud': batch['cloud']
     }
 
     stdout_stderr_specified_by_user = (bool(cli_stdout), bool(cli_stderr))
@@ -288,13 +290,15 @@ def extract_batches(red_data):
         for batch in red_batches:
             new_batch = {
                 'inputs': batch['inputs'],
-                'outputs': batch.get('outputs', {})
+                'outputs': batch.get('outputs', {}),
+                'cloud': red_data.get('cloud', {})
             }
             batches.append(new_batch)
     else:
         batch = {
             'inputs': red_data['inputs'],
-            'outputs': red_data.get('outputs', {})
+            'outputs': red_data.get('outputs', {}),
+            'cloud': red_data.get('cloud', {})
         }
         batches = [batch]
 
