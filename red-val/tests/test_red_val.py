@@ -4,8 +4,8 @@ from red_val.red_validation import get_variable_keys, red_validation
 from red_val import __version__
 from ruamel.yaml import YAML
 import pytest
-yaml = YAML(typ='safe')
 
+yaml = YAML(typ='safe')
 
 def test_version():
     assert __version__ == '9.1.1'
