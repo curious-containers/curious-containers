@@ -13,7 +13,7 @@ def red_create(batch: bool, output: bool):
     This function creates a red file for testing purpose.
     :param batch: If the batch is required
     :type batch: bool
-    :param output: If the output is required+
+    :param output: If the output is required
     :type output: bool
     :return: A red file consisting the above requirements
     :rtype: Dict[str, Any]
