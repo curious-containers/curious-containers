@@ -321,6 +321,8 @@ def run_agency(red_data, disable_retry, disable_connector_validation):
             pprint(r.json())
         except ValueError:  # if the body does not contain json, we ignore it
             pass
+    if r.status_code == 200:
+            pprint(r.json())
     r.raise_for_status()
 
     result['response'] = r.json()
