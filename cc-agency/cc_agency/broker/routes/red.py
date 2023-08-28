@@ -262,6 +262,12 @@ def red_routes(app, mongo, auth, controller, trustee_client):
     def get_batches_id(object_id):
         return get_collection_id('batches', object_id)
 
+    @app.route('/login', methods=['POST'])
+    def login():
+        print(request.authorization)
+        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
+        return create_file_flask_response("success", auth, user.authentication_cookie)
+
     @app.route('/batches/<batch_id>/<filename>', methods=['GET'])
     def get_batches_id_file(batch_id, filename):
         user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)

@@ -2,6 +2,7 @@ import os
 from argparse import ArgumentParser
 
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 import zmq
 
 from cc_agency.commons.helper import create_flask_response
@@ -17,6 +18,7 @@ from cc_agency.broker.routes.nodes import nodes_routes
 DESCRIPTION = 'CC-Agency Broker.'
 
 app = Flask('broker')
+cors = CORS(app)
 application = app
 
 parser = ArgumentParser(description=DESCRIPTION)
