@@ -3,6 +3,7 @@ from argparse import ArgumentParser
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager
 import zmq
 
 from cc_agency.commons.helper import create_flask_response
@@ -18,7 +19,9 @@ from cc_agency.broker.routes.nodes import nodes_routes
 DESCRIPTION = 'CC-Agency Broker.'
 
 app = Flask('broker')
-cors = CORS(app)
+app.config["JWT_SECRET_KEY"] = "super-secret"  # Change this!
+jwt = JWTManager(app)
+cors = CORS(app, supports_credentials=True)
 application = app
 
 parser = ArgumentParser(description=DESCRIPTION)
@@ -58,7 +61,7 @@ def get_version():
     )
 
 
-red_routes(app, mongo, auth, controller, trustee_client)
+red_routes(app, jwt, mongo, auth, controller, trustee_client)
 nodes_routes(app, mongo, auth)
 
 controller.send_json({'destination': 'scheduler'})

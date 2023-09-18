@@ -1,7 +1,9 @@
 import json
 from time import time
+from functools import wraps
 
-from flask import request
+from flask import request, jsonify, Response
+from flask_jwt_extended import create_access_token, get_jwt, get_jwt_identity, jwt_required, set_access_cookies, current_user
 from red_val.red_validation import red_validation
 from red_val.red_variables import get_variable_keys
 from werkzeug.exceptions import BadRequest, NotFound, InternalServerError
@@ -94,7 +96,7 @@ def _prepare_red_data(data, user, disable_retry, disable_connector_validation):
     return experiment, batches, secrets
 
 
-def red_routes(app, mongo, auth, controller, trustee_client):
+def red_routes(app, jwt, mongo, auth, controller, trustee_client):
     """
     Creates the red broker endpoints.
 
@@ -106,6 +108,54 @@ def red_routes(app, mongo, auth, controller, trustee_client):
     :param controller: The controller to communicate with the scheduler
     :param trustee_client: The trustee client
     """
+    
+    @app.before_request
+    def authenticate_user():
+        if request.authorization:
+            user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
+            if user:
+                access_token = create_access_token(identity=user)
+                request.environ['HTTP_AUTHORIZATION'] = f'Bearer {access_token}'
+    
+    def jwt_or_basic(func):
+        @jwt_required(optional=True)
+        def wrapper(*args, **kwargs):
+            current_user = get_jwt_identity()
+            if current_user:
+                return func(*args, **kwargs)
+            else:
+                return Response('Unauthorized', 401, {'WWW-Authenticate': 'Basic realm="Please fill in username and password"'})
+        return wrapper
+    
+    @app.route("/login", methods=["POST"])
+    def login():
+        username = request.authorization.get("username", None)
+        password = request.authorization.get("password", None)
+        user = auth._mongo.db['users'].find_one({'username': username})
+        if user is None or not auth._verify_user_by_credentials(user['password'], password, user['salt']):  # TODO: Replace with auth verification function
+            return jsonify({"msg": "Bad username or password"}), 401
+
+        user = Auth.User(username, user['is_admin'])
+        access_token = create_access_token(identity=user)
+        return jsonify(access_token=access_token)
+    
+    @jwt.user_identity_loader
+    def user_identity_lookup(user):
+        return user.username
+    
+    @jwt.user_lookup_loader
+    def user_lookup_callback(_jwt_header, jwt_data):
+        username = jwt_data["sub"]
+        db_user = auth._mongo.db['users'].find_one({'username': username})
+        user = Auth.User(username, db_user['is_admin'])
+        return user
+    
+    @app.route("/protected", methods=["GET"])
+    @jwt_or_basic
+    def protected():
+        print(f"protectedUser: {current_user}")
+        return jsonify(logged_in_as=current_user.username), 200
+
 
     @app.errorhandler(BadRequest)
     def bad_request_handler(e):
@@ -262,11 +312,11 @@ def red_routes(app, mongo, auth, controller, trustee_client):
     def get_batches_id(object_id):
         return get_collection_id('batches', object_id)
 
-    @app.route('/login', methods=['POST'])
-    def login():
-        print(request.authorization)
-        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
-        return create_file_flask_response("success", auth, user.authentication_cookie)
+    #@app.route('/login', methods=['POST'])
+    #def login():
+    #    print(request.authorization)
+    #    user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
+    #    return create_file_flask_response("success", auth, user.authentication_cookie)
 
     @app.route('/batches/<batch_id>/<filename>', methods=['GET'])
     def get_batches_id_file(batch_id, filename):
