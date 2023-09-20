@@ -109,15 +109,20 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client):
     :param trustee_client: The trustee client
     """
     
-    @app.before_request
-    def authenticate_user():
-        if request.authorization:
-            user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
-            if user:
-                access_token = create_access_token(identity=user)
-                request.environ['HTTP_AUTHORIZATION'] = f'Bearer {access_token}'
-    
     def jwt_or_basic(func):
+        """
+        A decorator that combines JWT (JSON Web Token) authentication with Basic authentication.
+
+        This decorator is used to protect routes with authentication. It first checks for a valid
+        JWT token in the request headers. If a valid token is found, it allows access to the route.
+        If no JWT token is present, it falls back to Basic authentication using the 'Authorization'
+        header. If valid Basic authentication credentials are provided, it allows access to the route.
+
+        :param func: The function or route to be protected.
+        :type func: callable
+        :return: The decorated function.
+        :rtype: callable
+        """
         @jwt_required(optional=True)
         def wrapper(*args, **kwargs):
             current_user = get_jwt_identity()
@@ -127,35 +132,77 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client):
                 return Response('Unauthorized', 401, {'WWW-Authenticate': 'Basic realm="Please fill in username and password"'})
         return wrapper
     
+    @app.before_request
+    def authenticate_user():
+        """
+        Authenticate the user before processing a request.
+
+        This function is executed before each request is processed by the application.
+        It checks for Basic authentication credentials in the request headers. If valid
+        credentials are provided, it generates and adds a JWT token to the request's
+        environment, allowing the user to access protected routes.
+
+        :return: None
+        """
+        if request.authorization:
+            user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
+            if user:
+                access_token = create_access_token(identity=user)
+                request.environ['HTTP_AUTHORIZATION'] = f'Bearer {access_token}'
+    
     @app.route("/login", methods=["POST"])
     def login():
-        username = request.authorization.get("username", None)
-        password = request.authorization.get("password", None)
-        user = auth._mongo.db['users'].find_one({'username': username})
-        if user is None or not auth._verify_user_by_credentials(user['password'], password, user['salt']):  # TODO: Replace with auth verification function
-            return jsonify({"msg": "Bad username or password"}), 401
+        """
+        Authenticate a user and return a JWT access token.
 
-        user = Auth.User(username, user['is_admin'])
+        This route handles user authentication. If valid credentials are provided, it generates
+        and returns a JWT access token in JSON format. If the credentials are invalid, it
+        returns a JSON response indicating unauthorized access.
+
+        :return: JSON response with an access token or an error message.
+        :rtype: Response
+        """
+        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
+        if user is None:
+            return jsonify({"msg": "Bad username or password"}), 401
+        
         access_token = create_access_token(identity=user)
         return jsonify(access_token=access_token)
     
     @jwt.user_identity_loader
     def user_identity_lookup(user):
+        """
+        User identity loader for JWT authentication.
+
+        This function is used to determine the identity of the user when creating a JWT token.
+        It extracts the username from the user object.
+
+        :param user: The user object.
+        :type user: Auth.User
+        :return: The username of the user.
+        :rtype: str
+        """
         return user.username
     
     @jwt.user_lookup_loader
     def user_lookup_callback(_jwt_header, jwt_data):
+        """
+        User lookup callback for JWT authentication.
+
+        This function is used to look up a user based on the 'sub' (subject) claim in the JWT data.
+        It retrieves the user from the database based on the username stored in the JWT data.
+
+        :param _jwt_header: The JWT header.
+        :type _jwt_header: dict
+        :param jwt_data: The JWT data containing the 'sub' claim.
+        :type jwt_data: dict
+        :return: The user object.
+        :rtype: Auth.User
+        """
         username = jwt_data["sub"]
         db_user = auth._mongo.db['users'].find_one({'username': username})
         user = Auth.User(username, db_user['is_admin'])
         return user
-    
-    @app.route("/protected", methods=["GET"])
-    @jwt_or_basic
-    def protected():
-        print(f"protectedUser: {current_user}")
-        return jsonify(logged_in_as=current_user.username), 200
-
 
     @app.errorhandler(BadRequest)
     def bad_request_handler(e):
@@ -173,9 +220,8 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client):
         return response, 400
 
     @app.route('/red', methods=['POST'])
+    @jwt_or_basic
     def post_red():
-        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
-
         if not request.json:
             raise BadRequest('Did not send RED data as JSON.')
 
@@ -225,7 +271,7 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client):
         except Exception:
             raise BadRequest('\n'.join(exception_format(secret_values=secret_values)))
 
-        experiment, batches, secrets = _prepare_red_data(data, user, disable_retry, disable_connector_validation)
+        experiment, batches, secrets = _prepare_red_data(data, current_user, disable_retry, disable_connector_validation)
 
         response = trustee_client.store(secrets)
         if response['state'] == 'failed':
@@ -241,12 +287,11 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client):
 
         controller.send_json({'destination': 'scheduler'})
 
-        return create_flask_response({'experimentId': experiment_id}, auth, user.authentication_cookie)
+        return create_flask_response({'experimentId': experiment_id}, auth, current_user.authentication_cookie)
 
-    @app.route('/batches/<object_id>', methods=['DELETE'])
+    @app.route('/batches/<object_id>', methods=['DELETE'], endpoint='delete_batches')
+    @jwt_or_basic
     def delete_batches(object_id):
-        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
-
         try:
             bson_id = ObjectId(object_id)
         except Exception:
@@ -255,9 +300,9 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client):
         match = {'_id': bson_id}
         match_with_state = {'_id': bson_id, 'state': {'$nin': ['succeeded', 'failed', 'cancelled']}}
 
-        if not user.is_admin:
-            match['username'] = user.username
-            match_with_state['username'] = user.username
+        if not current_user.is_admin:
+            match['username'] = current_user.username
+            match_with_state['username'] = current_user.username
 
         o = mongo.db['batches'].find_one(match, {'state': 1})
         if not o:
@@ -286,7 +331,7 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client):
 
         controller.send_json({'destination': 'scheduler'})
 
-        return create_flask_response(o, auth, user.authentication_cookie)
+        return create_flask_response(o, auth, current_user.authentication_cookie)
 
     @app.route('/experiments/count', methods=['GET'])
     def get_experiments_count():
@@ -312,16 +357,9 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client):
     def get_batches_id(object_id):
         return get_collection_id('batches', object_id)
 
-    #@app.route('/login', methods=['POST'])
-    #def login():
-    #    print(request.authorization)
-    #    user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
-    #    return create_file_flask_response("success", auth, user.authentication_cookie)
-
-    @app.route('/batches/<batch_id>/<filename>', methods=['GET'])
+    @app.route('/batches/<batch_id>/<filename>', methods=['GET'], endpoint='get_batches_id_file')
+    @jwt_or_basic
     def get_batches_id_file(batch_id, filename):
-        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
-
         try:
             bson_id = ObjectId(batch_id)
         except Exception:
@@ -329,8 +367,8 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client):
 
         match = {'_id': bson_id}
 
-        if not user.is_admin:
-            match['username'] = user.username
+        if not current_user.is_admin:
+            match['username'] = current_user.username
 
         o = mongo.db['batches'].find_one(match)
         if not o:
@@ -345,11 +383,10 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client):
         if data is None:
             raise NotFound('Could not find "{}" of batch "{}"'.format(filename, batch_id))
 
-        return create_file_flask_response(data, auth, user.authentication_cookie)
+        return create_file_flask_response(data, auth, current_user.authentication_cookie)
 
+    @jwt_or_basic
     def get_collection_id(collection, object_id):
-        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
-
         try:
             bson_id = ObjectId(object_id)
         except Exception:
@@ -357,19 +394,18 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client):
 
         match = {'_id': bson_id}
 
-        if not user.is_admin:
-            match['username'] = user.username
+        if not current_user.is_admin:
+            match['username'] = current_user.username
 
         o = mongo.db[collection].find_one(match)
         if not o:
             raise NotFound('Could not find Object.')
 
         o['_id'] = str(o['_id'])
-        return create_flask_response(o, auth, user.authentication_cookie)
+        return create_flask_response(o, auth, current_user.authentication_cookie)
 
+    @jwt_or_basic
     def get_collection_count(collection):
-        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
-
         username = request.args.get('username', default=None, type=str)
         node = None
         experiment_id = None
@@ -388,8 +424,8 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client):
 
         aggregate = []
 
-        if not user.is_admin:
-            aggregate.append({'$match': {'username': user.username}})
+        if not current_user.is_admin:
+            aggregate.append({'$match': {'username': current_user.username}})
 
         match = {}
 
@@ -412,13 +448,12 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client):
         cursor = list(cursor)
         
         if not cursor:
-            return create_flask_response({'count': 0}, auth, user.authentication_cookie)
+            return create_flask_response({'count': 0}, auth, current_user.authentication_cookie)
 
-        return create_flask_response(cursor[0], auth, user.authentication_cookie)
+        return create_flask_response(cursor[0], auth, current_user.authentication_cookie)
 
+    @jwt_or_basic
     def get_collection(collection):
-        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
-
         skip = request.args.get('skip', default=None, type=int)
         limit = request.args.get('limit', default=None, type=int)
         username = request.args.get('username', default=None, type=str)
@@ -446,8 +481,8 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client):
 
         aggregate = []
 
-        if not user.is_admin:
-            aggregate.append({'$match': {'username': user.username}})
+        if not current_user.is_admin:
+            aggregate.append({'$match': {'username': current_user.username}})
 
         match = {}
 
@@ -498,4 +533,4 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client):
             e['_id'] = str(e['_id'])
             result.append(e)
 
-        return create_flask_response(result, auth, user.authentication_cookie)
+        return create_flask_response(result, auth, current_user.authentication_cookie)
