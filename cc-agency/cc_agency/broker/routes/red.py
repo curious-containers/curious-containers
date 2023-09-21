@@ -167,7 +167,7 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client):
             return jsonify({"msg": "Bad username or password"}), 401
         
         access_token = create_access_token(identity=user)
-        return jsonify(access_token=access_token)
+        return jsonify(username=user.username, access_token=access_token)
     
     @jwt.user_identity_loader
     def user_identity_lookup(user):
