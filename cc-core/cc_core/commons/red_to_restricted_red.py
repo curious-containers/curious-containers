@@ -220,7 +220,7 @@ def default_inputs_dirname():
 
     :return: The default dirname for an input file.
     """
-    return CONTAINER_OUTPUT_DIR / str(uuid.uuid4())
+    return CONTAINER_INPUT_DIR / str(uuid.uuid4())
 
 
 def complete_file_input_values(input_key, input_value):
