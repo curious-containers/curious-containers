@@ -6,11 +6,13 @@ from cc_faice.agent.main import main as agent_main
 from cc_faice.exec.main import main as exec_main
 from cc_faice.schema.main import main as schema_main
 from cc_faice.convert.main import main as convert_main
+from cc_faice.agency.main import main as agency_main
 
 from cc_faice.agent.main import DESCRIPTION as AGENT_DESCRIPTION
 from cc_faice.exec.main import DESCRIPTION as EXEC_DESCRIPTION
 from cc_faice.schema.main import DESCRIPTION as SCHEMA_DESCRIPTION
 from cc_faice.convert.main import DESCRIPTION as CONVERT_DESCRIPTION
+from cc_faice.agency.main import DESCRIPTION as AGENCY_DESCRIPTION
 
 from cc_core.commons.cli_modes import cli_modes
 
@@ -24,6 +26,7 @@ MODES = OrderedDict([
     ('exec', {'main': exec_main, 'description': EXEC_DESCRIPTION}),
     ('schema', {'main': schema_main, 'description': SCHEMA_DESCRIPTION}),
     ('convert', {'main': convert_main, 'description': CONVERT_DESCRIPTION}),
+    ('agency', {'main': agency_main, 'description': AGENCY_DESCRIPTION})
 ])
 
 

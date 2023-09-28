@@ -11,6 +11,7 @@ from cc_core.commons.engines import engine_validation
 from cc_core.commons.red_secrets import get_secret_values, normalize_keys
 from cc_core.commons.exceptions import exception_format
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red
+from cc_agency.commons.conf import Conf
 
 from cc_agency.commons.helper import str_to_bool, create_flask_response, USER_SPECIFIED_STDOUT_KEY, \
     USER_SPECIFIED_STDERR_KEY, get_gridfs_filename, create_file_flask_response, STDOUT_FILE_KEY, STDERR_FILE_KEY
@@ -126,6 +127,21 @@ def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
 
         return response, 400
 
+
+    @app.route('/createuser', methods=['POST'])
+    def create_user():
+        data = request.json
+        username = data['username']
+        password = data['password']
+        is_admin = data.get('is_admin', False)
+        user = auth.verify_user(request.authorization,
+                         request.cookies, request.remote_addr)
+        if not user.is_admin:
+            return 'You do not have the necessary permissions to create a new user.', 403
+        auth.create_user(username, password, is_admin=is_admin)
+        return 'User created successfully!', 201
+    
+    
     @app.route('/red', methods=['POST'])
     def post_red():
         user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
