@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "cc-agency"
-version = "9.1.1"
+version = "9.2.0"
 authors = ["Christoph Jansen <Christoph.Jansen@htw-berlin.de>", "Bruno Schilling <Bruno.Schilling@student.htw-berlin.de>"]
 license = "AGPL-3.0"
 readme = "README.md"
@@ -13,12 +13,12 @@ python = "^3.7"
 flask = "^2.2"
 pyzmq = "^23.0"
 pymongo = "^3.7"
-cryptography = "^39.0"
-cc-core = "~9.1"
+cryptography = "^41.0"
+cc-core = "~9.2"
+urllib3 = "^1.26"
 
 [tool.poetry.dev-dependencies]
 
 [tool.poetry.scripts]
 ccagency-controller = 'cc_agency.controller.main:main'
-ccagency-trustee = 'cc_agency.trustee.main:main'
 ccagency = 'cc_agency.tools.main:main'

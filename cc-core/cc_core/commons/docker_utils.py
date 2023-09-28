@@ -15,7 +15,7 @@ from docker.models.images import Image
 
 from cc_core.commons.engines import NVIDIA_DOCKER_RUNTIME
 from cc_core.commons.red_to_restricted_red import CONTAINER_AGENT_PATH, CONTAINER_RESTRICTED_RED_FILE_PATH,\
-    CONTAINER_OUTPUT_DIR, CONTAINER_INPUT_DIR
+    CONTAINER_OUTPUT_DIR, CONTAINER_INPUT_DIR, CONTAINER_CLOUD_DIR
 
 GPU_CAPABILITIES = [['gpu'], ['nvidia'], ['compute'], ['compat32'], ['graphics'], ['utility'], ['video'], ['display']]
 GPU_QUERY_IMAGE = 'nvidia/cuda:8.0-runtime'
@@ -192,17 +192,18 @@ def create_batch_archive(restricted_red_data):
     """
     Creates a tar archive that can be put into a cc_core container to execute the restricted red agent.
 
-    This archive contains the restricted red agent, a restricted red file, the outputs-directory and the
-    inputs-directory.
+    This archive contains the restricted red agent, a restricted red file, the outputs-directory, inputs-directory
+    and the cloud-directory.
     The restricted red file is filled with the given restricted red data.
     The outputs-directory is an empty directory, with name 'outputs'
     The inputs-directory is an empty directory, with name 'inputs'
+    The cloud-directory is an empty directory, with name 'cloud'
     The tar archive and the restricted red file are always in memory and never stored on the host filesystem.
 
     All files and directories are owned by root.
     The restricted red agent has read and execution permissions for others.
     The restricted red file has read permissions set for others.
-    The directories outputs and inputs have read, write and execute permissions set for others.
+    The directories outputs, inputs and cloud have read, write and execute permissions set for others.
 
     The resulting archive is:
     /cc
@@ -210,6 +211,7 @@ def create_batch_archive(restricted_red_data):
     |-- /restricted_red_file.json
     |-- /outputs/
     |-- /inputs/
+    |-- /cloud/
 
     :param restricted_red_data: The data to put into the restricted red file of the returned archive
     :type restricted_red_data: dict
@@ -243,6 +245,10 @@ def create_batch_archive(restricted_red_data):
     # add inputs_directory
     input_directory_tarinfo = create_directory_tarinfo(CONTAINER_INPUT_DIR, permissions=DIRECTORY_PERMISSIONS)
     tar_file.addfile(input_directory_tarinfo)
+
+    # add cloud_directory
+    cloud_directory_tarinfo = create_directory_tarinfo(CONTAINER_CLOUD_DIR, permissions=DIRECTORY_PERMISSIONS)
+    tar_file.addfile(cloud_directory_tarinfo)
 
     # close file
     tar_file.close()

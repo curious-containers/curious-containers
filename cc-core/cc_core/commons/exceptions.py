@@ -9,6 +9,18 @@ from red_val.exceptions import format_validation_error
 
 
 def _hide_secret_values(text, secret_values):
+    """
+    Replaces occurrences of secret values in the given text with asterisks. Empty secret
+    values or values consisting of only whitespace are not replaced.
+
+    :param text: The original text containing potential secret values.
+    :type text: str
+    :param secret_values: A list of secret values to be replaced.
+    :type secret_values: list
+    :return: The error output where secret_values are replaced with asterisks
+    :rtype: str
+    """
+    secret_values = list(filter(lambda string: string.strip() != "", secret_values))
     if secret_values:
         return re.sub('|'.join(secret_values), '********', text)
     return text
