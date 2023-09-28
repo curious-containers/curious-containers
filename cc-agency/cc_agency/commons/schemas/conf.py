@@ -120,6 +120,24 @@ conf_schema = {
             },
             'additionalProperties': False,
             'required': ['db', 'username', 'password']
+        },
+        'cloud': {
+            'type': 'object',
+            'properties': {
+                'enable': {'type': 'boolean'},
+                'internal_url': {'type': 'string'},
+                'sshPort': {'type': 'integer'},
+                'disableStrictHostKeyChecking': {'type': 'boolean'},
+                'publicsshKey': {'type': 'string'},
+                'username': {'type': 'string'},
+                'password': {'type': 'string'},
+                'upload_directory_name': {'type': 'string'},
+                'userhome_directory': {'type': 'string'},
+                'filesystem_directory': {'type': 'string'},
+                'user_storage_limit': {'type': 'integer'},
+            },
+            'additionalProperties': False,
+            'required': ['enable', 'internal_url', 'username', 'password']
         }
     },
     'additionalProperties': False,
