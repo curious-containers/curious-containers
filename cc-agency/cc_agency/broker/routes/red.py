@@ -3,7 +3,8 @@ from time import time
 from functools import wraps
 
 from flask import request, jsonify, Response
-from flask_jwt_extended import create_access_token, get_jwt, get_jwt_identity, jwt_required, set_access_cookies, current_user
+from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt, get_jwt_identity, \
+    jwt_required, set_access_cookies, current_user
 from red_val.red_validation import red_validation
 from red_val.red_variables import get_variable_keys
 from werkzeug.exceptions import BadRequest, NotFound, InternalServerError
@@ -171,7 +172,15 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
             return jsonify({"msg": "Bad username or password"}), 401
         
         access_token = create_access_token(identity=user)
-        return jsonify(username=user.username, access_token=access_token)
+        refresh_token = create_refresh_token(identity=user)
+        return jsonify(username=user.username, access_token=access_token, refresh_token=refresh_token)
+    
+    @app.route("/refreshtoken", methods=["POST"])
+    @jwt_required(refresh=True)
+    def refresh():
+        identity = get_jwt_identity()
+        access_token = create_access_token(identity=identity)
+        return jsonify(access_token=access_token)
     
     @jwt.user_identity_loader
     def user_identity_lookup(user):
@@ -186,7 +195,10 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
         :return: The username of the user.
         :rtype: str
         """
-        return user.username
+        if (type(user) == str):
+            return user
+        else:
+            return user.username
     
     @jwt.user_lookup_loader
     def user_lookup_callback(_jwt_header, jwt_data):
