@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "red-fill"
-version = "9.2.1"
+version = "9.2.2"
 authors = ["Christoph Jansen <Christoph.Jansen@htw-berlin.de>", "Bruno Schilling <Bruno.Schilling@student.htw-berlin.de>"]
 license = "LGPL-3.0"
 readme = "README.md"

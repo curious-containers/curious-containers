@@ -9,7 +9,7 @@ RUN mkdir -p /opt/ccagency/privileged /opt/ccagency/unprivileged && chown cc:cc 
 USER cc
 
 # install agency
-RUN python3 -m venv /home/cc/ccagency-venv && . /home/cc/ccagency-venv/bin/activate && python3 -m pip install cc-agency==9.2.1
+RUN python3 -m venv /home/cc/ccagency-venv && . /home/cc/ccagency-venv/bin/activate && python3 -m pip install cc-agency==9.2.2
 
 # add config file
 RUN mkdir -p /home/cc/.config
