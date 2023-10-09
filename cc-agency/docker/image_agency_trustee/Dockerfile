@@ -14,7 +14,7 @@ ADD --chown=root:root ccagency-trustee.ini /opt/ccagency/privileged/ccagency-tru
 USER cc
 
 # install agency
-RUN python3 -m venv /home/cc/ccagency-venv && . /home/cc/ccagency-venv/bin/activate && python3 -m pip install cc-agency==9.2.1
+RUN python3 -m venv /home/cc/ccagency-venv && . /home/cc/ccagency-venv/bin/activate && python3 -m pip install cc-agency==9.2.2
 
 # add config file
 RUN mkdir -p /home/cc/.config
