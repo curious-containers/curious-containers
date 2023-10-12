@@ -15,7 +15,7 @@ SSH_PASSWORD = 'test_password'
 AGENCY_URL = 'http://localhost:8080'
 AGENCY_USER = 'agency_user'
 AGENCY_PASSWORD = 'agency_password'
-MAX_RETRIES = 20
+MAX_RETRIES = 48
 RETRY_DELAY = 5
 
 OUTPUT_DIR = './output'
@@ -37,15 +37,24 @@ def read_red_file(filename):
 
 
 def find_batch_id(response):
+    batch_ids = find_batch_ids(response)
+    if len(batch_ids) > 0:
+        return batch_ids[0]
+    else:
+        return ''
+
+
+def find_batch_ids(response):
     data = response.json()
     experiment_id = data['experimentId']
     batches = requests.get(AGENCY_URL + '/batches', auth=(AGENCY_USER, AGENCY_PASSWORD)).json()
     
+    batch_ids = []
     for batch in batches:
         if batch['experimentId'] == experiment_id:
-            return batch['_id']
+            batch_ids.append(batch['_id'])
     
-    return ''
+    return batch_ids
 
 
 def fetch_final_batch_state(batch_id):
@@ -62,6 +71,7 @@ def fetch_final_batch_state(batch_id):
         else:
             time.sleep(RETRY_DELAY)
     
+    pytest.fail("The experiment exceeded the specified timeout. It could not be verified if the experiment has reached a final state.")
     return current_state
 
 
@@ -214,8 +224,16 @@ def test_experiment_batch_by_id(setup_agency):
     assert response_batch_id == batch_id
 
 
-def test_batch_status_succeeded(setup_agency):
-    red_json = read_red_file('red/minimal.json')
+@pytest.mark.parametrize(
+    'red_file',
+    [
+        'red/minimal.json',
+        'red/input_output.json',
+        'red/stdout.json'
+    ]
+)
+def test_batch_status_succeeded(setup_agency, red_file):
+    red_json = read_red_file(red_file)
     response = requests.post(AGENCY_URL + '/red', auth=(AGENCY_USER, AGENCY_PASSWORD), json=red_json)
     
     batch_id = find_batch_id(response)
@@ -239,8 +257,6 @@ def test_batch_status_cancelled(setup_agency):
 def test_input_output_connector(setup_agency):
     red_json = read_red_file('red/input_output.json')
     response = requests.post(AGENCY_URL + '/red', auth=(AGENCY_USER, AGENCY_PASSWORD), json=red_json)
-    print(response.json())
-    print(str(response.json()))
     
     batch_id = find_batch_id(response)
     fetch_final_batch_state(batch_id)
@@ -253,3 +269,37 @@ def test_input_output_connector(setup_agency):
         expected_results = file.read()
     
     assert results == expected_results
+
+
+def test_experiment_with_multiple_batches(setup_agency):
+    red_json = read_red_file('red/multi_batch.json')
+    response = requests.post(AGENCY_URL + '/red', auth=(AGENCY_USER, AGENCY_PASSWORD), json=red_json)
+    
+    batch_ids = find_batch_ids(response)
+    final_states = []
+    for batch_id in batch_ids:
+        final_states.append(fetch_final_batch_state(batch_id))
+    
+    assert final_states == ['succeeded', 'succeeded', 'succeeded']
+
+
+def test_experiment_stdout(setup_agency):
+    red_json = read_red_file('red/stdout.json')
+    response = requests.post(AGENCY_URL + '/red', auth=(AGENCY_USER, AGENCY_PASSWORD), json=red_json)
+    
+    batch_id = find_batch_id(response)
+    fetch_final_batch_state(batch_id)
+    
+    stdout_response = requests.get(AGENCY_URL + '/batches/' + batch_id + '/stdout', auth=(AGENCY_USER, AGENCY_PASSWORD))
+    stdout = stdout_response.text
+    
+    assert stdout == 'test\n'
+
+
+def test_red_format_error(setup_agency):
+    red_json = read_red_file('red/format_error.json')
+    response = requests.post(AGENCY_URL + '/red', auth=(AGENCY_USER, AGENCY_PASSWORD), json=red_json)
+    
+    statuscode = response.status_code
+    
+    assert statuscode == 400
