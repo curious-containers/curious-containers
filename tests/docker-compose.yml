@@ -54,6 +54,27 @@ services:
     environment:
       - AGENCY_USER=agency_user
       - AGENCY_PASSWORD=agency_password
+  openssh-server:
+    container_name: openssh-server
+    restart: "no"
+    image: lscr.io/linuxserver/openssh-server:9.3_p2-r0-ls132
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - PASSWORD_ACCESS=true
+      - USER_NAME=test_user
+      - USER_PASSWORD=test_password
+    ports:
+      - 2222:2222
+    volumes:
+      - type: bind
+        source: ./input
+        target: /input
+      - type: bind
+        source: ./output
+        target: /output
+    network_mode: bridge
 
 volumes:
   broker_socket:
