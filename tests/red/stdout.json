@@ -12,7 +12,8 @@
                 }
             }
         },
-        "outputs": {}
+        "outputs": {},
+        "stdout": "stdout.txt"
     },
     "inputs": {
         "some_string": "test"

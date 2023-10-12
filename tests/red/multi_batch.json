@@ -12,12 +12,32 @@
                 }
             }
         },
-        "outputs": {}
+        "outputs": {
+            "mystdout": {
+                "type": "stdout"
+            }
+        }
     },
-    "inputs": {
-        "some_string": "test"
-    },
-    "outputs": {},
+    "batches": [
+        {
+            "inputs": {
+                "some_string": "test_0"
+            },
+            "outputs": {}
+        },
+        {
+            "inputs": {
+                "some_string": "test_1"
+            },
+            "outputs": {}
+        },
+        {
+            "inputs": {
+                "some_string": "test_2"
+            },
+            "outputs": {}
+        }
+    ],
     "container": {
         "engine": "docker",
         "settings": {

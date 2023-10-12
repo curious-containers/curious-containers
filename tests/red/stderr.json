@@ -12,10 +12,12 @@
                 }
             }
         },
-        "outputs": {}
+        "outputs": {},
+        "stdout": "stdout.txt",
+        "stderr": "stderr.txt"
     },
     "inputs": {
-        "some_string": "test"
+        "some_string": "test \">&2"
     },
     "outputs": {},
     "container": {
