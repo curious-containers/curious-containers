@@ -15,7 +15,7 @@ services:
     command: /usr/bin/uwsgi /opt/ccagency/privileged/ccagency-trustee.ini
     volumes:
       - type: bind
-        source: ./cc-agency.yml
+        source: ./setup/cc-agency.yml
         target: /home/cc/.config/cc-agency.yml
   agency-controller:
     container_name: agency_controller
@@ -29,7 +29,7 @@ services:
         source: //var/run/docker.sock
         target: //var/run/docker.sock
       - type: bind
-        source: ./cc-agency.yml
+        source: ./setup/cc-agency.yml
         target: /home/cc/.config/cc-agency.yml
     environment:
       - PYTHONUNBUFFERED=1
@@ -47,7 +47,7 @@ services:
         source: broker_socket
         target: /opt/ccagency/unprivileged
       - type: bind
-        source: ./cc-agency.yml
+        source: ./setup/cc-agency.yml
         target: /home/cc/.config/cc-agency.yml
     ports:
       - "8080:8080"
