@@ -10,19 +10,19 @@ from flask import Flask, request, jsonify
 from werkzeug.serving import make_server
 import threading
 
-DOCKER_HOST_IP = '172.17.0.1'
-SSH_PORT = '2222'
-SSH_USER = 'test_user'
-SSH_PASSWORD = 'test_password'
+DOCKER_HOST_IP = os.environ.get('DOCKER_HOST_IP', '172.17.0.1')
+SSH_PORT = os.environ.get('SSH_PORT', '2222')
+SSH_USER = os.environ.get('SSH_USER', 'test_user')
+SSH_PASSWORD = os.environ.get('SSH_PASSWORD', 'test_password')
 
-AGENCY_URL = 'http://localhost:8080'
-AGENCY_USER = 'agency_user'
-AGENCY_PASSWORD = 'agency_password'
-MAX_RETRIES = 48
-RETRY_DELAY = 5
-NOTIFICATION_PORT = 8090
+AGENCY_URL = os.environ.get('AGENCY_URL', 'http://localhost:8080')
+AGENCY_USER = os.environ.get('AGENCY_USER', 'agency_user')
+AGENCY_PASSWORD = os.environ.get('AGENCY_PASSWORD', 'agency_password')
+MAX_RETRIES = int(os.environ.get('MAX_RETRIES', 48))
+RETRY_DELAY = int(os.environ.get('RETRY_DELAY', 5))
+NOTIFICATION_PORT = int(os.environ.get('NOTIFICATION_PORT', 8090))
 
-OUTPUT_DIR = './output'
+OUTPUT_DIR = os.environ.get('OUTPUT_DIR', './output')
 
 
 class ServerThread(threading.Thread):
