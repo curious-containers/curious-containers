@@ -6,6 +6,10 @@ import json
 import re
 import os
 import shutil
+from flask import Flask, request, jsonify
+from werkzeug.serving import make_server
+import threading
+import unittest
 
 DOCKER_HOST_IP = '172.17.0.1'
 SSH_PORT = '2222'
@@ -17,8 +21,24 @@ AGENCY_USER = 'agency_user'
 AGENCY_PASSWORD = 'agency_password'
 MAX_RETRIES = 48
 RETRY_DELAY = 5
+NOTIFICATION_PORT = 8090
 
 OUTPUT_DIR = './output'
+
+
+class ServerThread(threading.Thread):
+
+    def __init__(self, app):
+        threading.Thread.__init__(self)
+        self.server = make_server(DOCKER_HOST_IP, NOTIFICATION_PORT, app)
+        self.ctx = app.app_context()
+        self.ctx.push()
+
+    def run(self):
+        self.server.serve_forever()
+
+    def shutdown(self):
+        self.server.shutdown()
 
 
 def read_red_file(filename):
@@ -72,7 +92,6 @@ def fetch_final_batch_state(batch_id):
             time.sleep(RETRY_DELAY)
     
     pytest.fail("The experiment exceeded the specified timeout. It could not be verified if the experiment has reached a final state.")
-    return current_state
 
 
 def is_server_up(url):
@@ -109,6 +128,30 @@ def setup_agency():
     # teardown cc-agency
     subprocess.Popen(["sh", "stop_agency.sh"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).wait()
     shutil.rmtree(OUTPUT_DIR)
+
+
+@pytest.fixture
+def notification_webserver():
+    # setup webserver
+    app = Flask(__name__)
+    app.logger.disabled = True
+    server = ServerThread(app)
+    server.start()
+    
+    received_hooks = []
+
+    @app.route('/notification_hook', methods=['POST'])
+    def notification_hook():
+        data = request.json
+        if len(data['batches']) > 0:
+            received_hooks.append(data)
+        return jsonify(success=True)
+
+    # execute testcases
+    yield received_hooks
+    
+    # stop webserver
+    server.shutdown()
 
 
 def test_broker_no_auth_required(setup_agency):
@@ -242,6 +285,16 @@ def test_batch_status_succeeded(setup_agency, red_file):
     assert final_state == 'succeeded'
 
 
+def test_batch_status_failed(setup_agency):
+    red_json = read_red_file('red/failed.json')
+    response = requests.post(AGENCY_URL + '/red', auth=(AGENCY_USER, AGENCY_PASSWORD), json=red_json)
+    
+    batch_id = find_batch_id(response)
+    final_state = fetch_final_batch_state(batch_id)
+    
+    assert final_state == 'failed'
+
+
 def test_batch_status_cancelled(setup_agency):
     red_json = read_red_file('red/minimal.json')
     response = requests.post(AGENCY_URL + '/red', auth=(AGENCY_USER, AGENCY_PASSWORD), json=red_json)
@@ -283,7 +336,7 @@ def test_experiment_with_multiple_batches(setup_agency):
     assert final_states == ['succeeded', 'succeeded', 'succeeded']
 
 
-def test_experiment_stdout(setup_agency):
+def test_batch_stdout(setup_agency):
     red_json = read_red_file('red/stdout.json')
     response = requests.post(AGENCY_URL + '/red', auth=(AGENCY_USER, AGENCY_PASSWORD), json=red_json)
     
@@ -303,3 +356,46 @@ def test_red_format_error(setup_agency):
     statuscode = response.status_code
     
     assert statuscode == 400
+
+
+@pytest.mark.parametrize(
+    'red_file',
+    [
+        'red/minimal.json',
+        'red/failed.json',
+    ]
+)
+def test_notification_hooks(setup_agency, notification_webserver, red_file):
+    red_json = read_red_file(red_file)
+    response = requests.post(AGENCY_URL + '/red', auth=(AGENCY_USER, AGENCY_PASSWORD), json=red_json)
+    
+    batch_id = find_batch_id(response)
+    final_state = fetch_final_batch_state(batch_id)
+    
+    expected_notification = [{
+        'batches': [{
+            'batchId': batch_id,
+            'state': final_state
+        }]
+    }]
+    
+    assert notification_webserver == expected_notification
+
+
+def test_notification_hooks_batches(setup_agency, notification_webserver):
+    case = unittest.TestCase()
+    red_json = read_red_file('red/multi_batch.json')
+    response = requests.post(AGENCY_URL + '/red', auth=(AGENCY_USER, AGENCY_PASSWORD), json=red_json)
+    
+    batch_ids = find_batch_ids(response)
+    expected_notifications = []
+    for batch_id in batch_ids:
+        expected_notifications.append({
+            'batches': [{
+                'batchId': batch_id,
+                'state': fetch_final_batch_state(batch_id)
+            }]
+        })
+    
+    case.assertCountEqual(notification_webserver, expected_notifications)
+

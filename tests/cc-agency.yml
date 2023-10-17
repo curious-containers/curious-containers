@@ -11,6 +11,8 @@ controller:
     nodes:
       node_a:
         base_url: "unix://var/run/docker.sock"
+  notification_hooks:
+    - url: "http://172.17.0.1:8090/notification_hook"
 
 trustee:
   internal_url: "http://agency_trustee:6001"
