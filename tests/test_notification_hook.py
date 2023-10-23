@@ -18,6 +18,7 @@ def test_notification_hooks(setup_agency, notification_webserver, red_file):
     
     batch_id = find_batch_id(response)
     final_state = fetch_final_batch_state(batch_id)
+    time.sleep(70)
     
     expected_notification = [{
         'batches': [{
@@ -61,5 +62,6 @@ def test_notification_hooks_batches(setup_agency, notification_webserver):
             'batchId': batch_id,
             'state': fetch_final_batch_state(batch_id)
         })
+    time.sleep(70)
     
     case.assertCountEqual(notification_webserver, expected_notifications)
