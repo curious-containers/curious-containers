@@ -1,7 +1,7 @@
 import pytest
 import requests
-from test_setup import AGENCY_URL, AGENCY_USER, AGENCY_PASSWORD, read_red_file, find_batch_id, \
-    find_batch_ids, fetch_final_batch_state, setup_agency
+from test_setup import AGENCY_URL, AGENCY_USER, AGENCY_PASSWORD, OUTPUT_DIR, read_red_file, \
+    find_batch_id, find_batch_ids, fetch_final_batch_state, setup_agency
 
 
 @pytest.mark.parametrize(
@@ -53,7 +53,7 @@ def test_input_output_connector(setup_agency):
     
     results = ''
     expected_results = ''
-    with open('output/count_results.txt', 'r') as file:
+    with open(f"{OUTPUT_DIR}/count_results.txt", 'r') as file:
         results = file.read()
     with open('input/count_results.txt', 'r') as file:
         expected_results = file.read()
