@@ -9,8 +9,13 @@ RUN mkdir -p /opt/ccagency/privileged /opt/ccagency/unprivileged && chown cc:cc 
 USER cc
 
 # install agency
-RUN python3 -m venv /home/cc/ccagency-venv && . /home/cc/ccagency-venv/bin/activate && python3 -m pip install cc-agency==9.2.2
+COPY . /home/cc/
+
+RUN python3 -m venv /home/cc/ccagency-venv && . /home/cc/ccagency-venv/bin/activate
+RUN pip install poetry
+
+WORKDIR /home/cc/cc-agency
+RUN . /home/cc/ccagency-venv/bin/activate && /home/cc/.local/bin/poetry install
 
 # add config file
 RUN mkdir -p /home/cc/.config
-ADD --chown=cc:cc cc-agency.yml /home/cc/.config/cc-agency.yml
