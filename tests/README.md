@@ -28,5 +28,5 @@ The integration tests automatically set up a CC Agency for testing. The setup pr
 To execute the integration tests, follow these steps:
 
 1. Ensure that Docker and Docker Compose are installed and the user has the necessary permissions to create and run Docker containers.
-2. Navigate to the /tests directory of the software project.
+2. Navigate to the /tests directory of the repository.
 3. Run the pytest command to initiate the integration tests. The pytest framework will automatically discover and execute the integration test files.
