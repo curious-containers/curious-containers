@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "cc-core"
-version = "9.2.2"
+version = "9.2.3"
 authors = ["Christoph Jansen <Christoph.Jansen@htw-berlin.de>", "Bruno Schilling <Bruno.Schilling@student.htw-berlin.de>"]
 license = "AGPL-3.0"
 readme = "README.md"

@@ -1,0 +1,42 @@
+{
+    "redVersion": "9",
+    "cli": {
+        "cwlVersion": "v1.0",
+        "class": "CommandLineTool",
+        "baseCommand": "echo",
+        "inputs": {
+            "some_string": {
+                "type": "string",
+                "inputBinding": {
+                    "position": 0
+                }
+            }
+        },
+        "outputs": {}
+    },
+    "inputs": {
+        "some_string": "test"
+    },
+    "outputs": {},
+    "container": {
+        "engine": "docker",
+        "settings": {
+            "image": {
+                "url": "python:3.12"
+            },
+            "ram": 256
+        }
+    },
+    "execution": {
+        "engine": "ccagency",
+        "settings": {
+            "access": {
+                "url": "{{agency_url}}",
+                "auth": {
+                    "username": "{{agency_user}}",
+                    "password": "{{agency_password}}"
+                }
+            }
+        }
+    }
+}

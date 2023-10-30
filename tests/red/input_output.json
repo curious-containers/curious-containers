@@ -1,0 +1,102 @@
+{
+    "redVersion": "9",
+    "cli": {
+        "cwlVersion": "v1.0",
+        "class": "CommandLineTool",
+        "baseCommand": "python3",
+        "inputs": {
+            "script": {
+                "type": "File",
+                "inputBinding": {
+                    "position": 0
+                }
+            },
+            "data": {
+                "type": "File",
+                "inputBinding": {
+                    "position": 1
+                }
+            }
+        },
+        "outputs": {
+            "output_file": {
+                "type": "File",
+                "outputBinding": {
+                    "glob": "count_results.txt"
+                }
+            }
+        },
+        "stdout": "stdout.txt",
+        "stderr": "stderr.txt"
+    },
+    "inputs": {
+        "script": {
+            "class": "File",
+            "connector": {
+                "command": "red-connector-ssh",
+                "access": {
+                    "host": "{{host_ip}}",
+                    "port": "{{ssh_port}}",
+                    "auth": {
+                        "username": "{{ssh_username}}",
+                        "password": "{{ssh_password}}"
+                    },
+                    "filePath": "/input/count.py"
+                }
+            }
+        },
+        "data": {
+            "class": "File",
+            "connector": {
+                "command": "red-connector-ssh",
+                "access": {
+                    "host": "{{host_ip}}",
+                    "port": "{{ssh_port}}",
+                    "auth": {
+                        "username": "{{ssh_username}}",
+                        "password": "{{ssh_password}}"
+                    },
+                    "filePath": "/input/data.txt"
+                }
+            }
+        }
+    },
+    "outputs": {
+        "output_file": {
+            "class": "File",
+            "connector": {
+                "command": "red-connector-ssh",
+                "access": {
+                    "host": "{{host_ip}}",
+                    "port": "{{ssh_port}}",
+                    "auth": {
+                        "username": "{{ssh_username}}",
+                        "password": "{{ssh_password}}"
+                    },
+                    "filePath": "/output/count_results.txt"
+                }
+            }
+        }
+    },
+    "container": {
+        "engine": "docker",
+        "settings": {
+            "image": {
+                "url": "dprobst/curious_containers:python"
+            },
+            "ram": 256
+        }
+    },
+    "execution": {
+        "engine": "ccagency",
+        "settings": {
+            "access": {
+                "url": "{{agency_url}}",
+                "auth": {
+                    "username": "{{agency_user}}",
+                    "password": "{{agency_password}}"
+                }
+            }
+        }
+    }
+}

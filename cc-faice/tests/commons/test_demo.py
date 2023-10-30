@@ -92,24 +92,24 @@ red_message = [
     {
         'inputs':{
             'auth' : {
-                'privateKey': "{{avocado_private_key01}}"
+                'privateKey': "{{private_key01}}"
             }
         },
         'outputs' :{
             'auth' : {
-                'privateKey': "{{avocado_private_key02}}"
+                'privateKey': "{{private_key02}}"
             }
         },
         'execution' :{
             'auth' : {
-                'privateKey': "{{avocado_private_key03}}"
+                'privateKey': "{{private_key03}}"
             }
         }
     }
 ]
-get_secret_values_expected_value = ['{{avocado_private_key01}}',
-                                    '{{avocado_private_key02}}',
-                                    '{{avocado_private_key03}}']
+get_secret_values_expected_value = ['{{private_key01}}',
+                                    '{{private_key02}}',
+                                    '{{private_key03}}']
 def test_get_secret_values():
     """
     Tests the get_secret_values function from cc_core.commons.
