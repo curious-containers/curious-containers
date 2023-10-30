@@ -8,7 +8,7 @@ import pytest
 yaml = YAML(typ='safe')
 
 def test_version():
-    assert __version__ == '9.2.2'
+    assert __version__ == '9.2.3'
 
 
 test_dict = {
