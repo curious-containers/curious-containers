@@ -14,12 +14,15 @@ from cc_core.commons.engines import engine_validation
 from cc_core.commons.red_secrets import get_secret_values, normalize_keys
 from cc_core.commons.exceptions import exception_format
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red
+from cc_core.commons.schemas.engines.container import container_engines
 
 from cc_agency.commons.helper import str_to_bool, create_flask_response, USER_SPECIFIED_STDOUT_KEY, \
     USER_SPECIFIED_STDERR_KEY, get_gridfs_filename, create_file_flask_response, STDOUT_FILE_KEY, STDERR_FILE_KEY
 from cc_agency.commons.secrets import separate_secrets_batch, separate_secrets_experiment
 from cc_agency.commons.db import Mongo
 from cc_agency.broker.auth import Auth
+
+from red_val.schemas.red import red_schema
 
 
 def _prepare_red_data(data, user, disable_retry, disable_connector_validation):
@@ -555,3 +558,12 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
             result.append(e)
 
         return create_flask_response(result, auth, current_user.authentication_cookie)
+    
+    @app.route('/schema/red', methods=['GET'])
+    def get_schema():
+        return red_schema, 200
+    
+    @app.route('/schema/engines/container', methods=['GET'])
+    def get_container_engines():
+        return container_engines, 200
+    
