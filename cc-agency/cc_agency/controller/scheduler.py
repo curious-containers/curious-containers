@@ -96,10 +96,13 @@ class Scheduler:
                     'state': batch['state']
                 })
 
-            self._mongo.db['batches'].update(
+            self._mongo.db['batches'].update_many(
                 {'_id': {'$in': bson_ids}},
                 {'$set': {'notificationsSent': True}}
             )
+            
+            if len(payload['batches']) == 0:
+                continue
 
             notification_hooks = self._conf.d['controller'].get('notification_hooks', [])
 

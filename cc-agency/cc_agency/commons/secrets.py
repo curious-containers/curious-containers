@@ -9,6 +9,19 @@ import requests
 _RECEIVE_TIMEOUT = 2000
 
 
+def separate_secrets_batch_dict(val, reversed_secrets, secrets):
+    secret = val['connector']['access']
+    if secret is not None:
+        dumped = json.dumps(secret, sort_keys=True)
+    if dumped in reversed_secrets:
+        key = reversed_secrets[dumped]
+    else:
+        key = str(uuid4())
+        reversed_secrets[dumped] = key
+        secrets[key] = secret
+    val['connector']['access'] = key
+
+
 def separate_secrets_batch(batch):
     batch = deepcopy(batch)
     secrets = {}
@@ -16,18 +29,12 @@ def separate_secrets_batch(batch):
 
     for io in ['inputs', 'outputs']:
         for cwl_key, cwl_val in batch[io].items():
-            if not isinstance(cwl_val, dict):
-                continue
-            secret = cwl_val['connector']['access']
-            dumped = json.dumps(secret, sort_keys=True)
-            if dumped in reversed_secrets:
-                key = reversed_secrets[dumped]
-            else:
-                key = str(uuid4())
-                reversed_secrets[dumped] = key
-                secrets[key] = secret
-
-            cwl_val['connector']['access'] = key
+            if isinstance(cwl_val, dict):
+                separate_secrets_batch_dict(cwl_val, reversed_secrets, secrets)
+            elif isinstance(cwl_val, list):
+                for val in cwl_val:
+                    if isinstance(val, dict):
+                        separate_secrets_batch_dict(val, reversed_secrets, secrets)
     
     if 'cloud' in batch and batch['cloud'].get('enable'):
         secret = batch['cloud']['auth']
@@ -57,24 +64,35 @@ def get_batch_secret_keys(batch):
     keys = []
     for io in ['inputs', 'outputs']:
         for cwl_key, cwl_val in batch[io].items():
-            if not isinstance(cwl_val, dict):
-                continue
-            keys.append(cwl_val['connector']['access'])
+            if isinstance(cwl_val, dict):
+                keys.append(cwl_val['connector']['access'])
+            elif isinstance(cwl_val, list):
+                for val in cwl_val:
+                    if isinstance(val, dict):
+                        keys.append(val['connector']['access'])
+    
     if 'cloud' in batch and batch['cloud'].get('enable'):
         keys.append(batch['cloud']['auth'])
     return keys
+
+
+def fill_batch_secrets_dict(val, secrets):
+    key = val['connector']['access']
+    secret = secrets[key]
+    val['connector']['access'] = secret
 
 
 def fill_batch_secrets(batch, secrets):
     batch = deepcopy(batch)
     for io in ['inputs', 'outputs']:
         for cwl_key, cwl_val in batch[io].items():
-            if not isinstance(cwl_val, dict):
-                continue
-
-            key = cwl_val['connector']['access']
-            secret = secrets[key]
-            cwl_val['connector']['access'] = secret
+            if isinstance(cwl_val, dict):
+                fill_batch_secrets_dict(cwl_val, secrets)
+            elif isinstance(cwl_val, list):
+                for val in cwl_val:
+                    if isinstance(val, dict):
+                        fill_batch_secrets_dict(val, secrets)
+    
     if 'cloud' in batch and batch['cloud'].get('enable'):
         key = batch['cloud']['auth']
         secret = secrets[key]

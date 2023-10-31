@@ -2,6 +2,7 @@ import pytest
 
 from cc_core.commons.exceptions import InvalidInputReference
 from cc_core.commons.input_references import resolve_input_references
+from cc_core.commons.command_builder import generate_command
 
 INPUT_LIST_TO_REFERENCE = {
     'a_file': [
@@ -138,3 +139,26 @@ def test_int_value():
     result = resolve_input_references(glob, INPUT_TO_REFERENCE)
 
     assert result == '1000'
+
+
+def test_generate_command():
+    """
+    This test case verifies that the generate_command function produces the expected command when
+    provided with a base command, an empty list of CLI arguments, and a batch of inputs.
+    The expected command in this test case is the same as the base command since no CLI arguments
+    are specified.
+    If the generated command matches the expected command, the test case passes. Otherwise, it fails
+    Note: Adjust the test data and assertions as needed for different scenarios with different
+    CLI arguments and input batches.
+    """
+    base_command = ["python", "script.py"]
+    cli_arguments = []
+    batch = {
+        "inputs": {
+            "arg1": "value1",
+            "arg2": "option2",
+        }
+    }
+    expected_command = ["python", "script.py"]
+    result = generate_command(base_command, cli_arguments, batch)
+    assert result == expected_command

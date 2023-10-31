@@ -1,0 +1,26 @@
+broker:
+  auth:
+    num_login_attempts: 3
+    block_for_seconds: 30
+    tokens_valid_for_seconds: 86400  # 24 h
+
+controller:
+  bind_socket_path: "/opt/ccagency/unprivileged/cc-agency-controller.sock"
+  docker:
+    allow_insecure_capabilities: false
+    nodes:
+      node_a:
+        base_url: "unix://var/run/docker.sock"
+  notification_hooks:
+    - url: "http://172.17.0.1:8090/notification_hook"
+
+trustee:
+  internal_url: "http://agency_trustee:6001"
+  username: "cctrustee"
+  password: "SECRET"
+
+mongo:
+  host: "mongodb"
+  db: "ccagency"
+  username: "ccadmin"
+  password: "SECRET"

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "red-val"
-version = "9.2.0"
+version = "9.2.3"
 authors = ["Christoph Jansen <Christoph.Jansen@htw-berlin.de>", "Bruno Schilling <Bruno.Schilling@student.htw-berlin.de>"]
 license = "LGPL-3.0"
 readme = "README.md"
