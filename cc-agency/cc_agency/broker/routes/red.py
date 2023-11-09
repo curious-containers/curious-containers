@@ -21,6 +21,7 @@ from cc_agency.commons.helper import str_to_bool, create_flask_response, USER_SP
 from cc_agency.commons.secrets import separate_secrets_batch, separate_secrets_experiment
 from cc_agency.commons.db import Mongo
 from cc_agency.broker.auth import Auth
+from cc_agency.version import VERSION as AGENCY_VERSION
 
 from red_val.schemas.red import red_schema
 
@@ -558,6 +559,11 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
             result.append(e)
 
         return create_flask_response(result, auth, current_user.authentication_cookie)
+    
+    @app.route('/version', methods=['GET'], endpoint='get_version')
+    @jwt_or_basic
+    def get_version():
+        return create_flask_response({'agencyVersion': AGENCY_VERSION}, auth, current_user.authentication_cookie)
     
     @app.route('/schema/red', methods=['GET'])
     def get_schema():
