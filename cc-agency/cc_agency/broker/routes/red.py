@@ -573,3 +573,42 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
     def get_container_engines():
         return container_engines, 200
     
+    
+    @app.route('/nodes', methods=['GET'], endpoint='get_nodes')
+    @jwt_or_basic
+    def get_nodes():
+        cursor = mongo.db['nodes'].find()
+
+        nodes = list(cursor)
+        node_names = [node['nodeName'] for node in nodes]
+
+        cursor = mongo.db['batches'].find(
+            {
+                'node': {'$in': node_names},
+                'state': {'$in': ['scheduled', 'processing']}
+            },
+            {'experimentId': 1, 'node': 1}
+        )
+        batches = list(cursor)
+        experiment_ids = list(set([ObjectId(b['experimentId']) for b in batches]))
+
+        cursor = mongo.db['experiments'].find(
+            {'_id': {'$in': experiment_ids}},
+            {'container.settings.ram': 1}
+        )
+        experiments = {str(e['_id']): e for e in cursor}
+
+        for node in nodes:
+            batches_ram = [
+                {
+                    'batchId': str(b['_id']),
+                    'ram': experiments[b['experimentId']]['container']['settings']['ram']
+                }
+                for b in batches
+                if b['node'] == node['nodeName']
+            ]
+            node['currentBatches'] = batches_ram
+            del node['_id']
+
+        return create_flask_response(nodes, auth, current_user.authentication_cookie)
+    

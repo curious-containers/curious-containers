@@ -13,7 +13,6 @@ from cc_agency.commons.secrets import TrusteeClient
 from cc_agency.commons.cloud_proxy import CloudProxy
 from cc_agency.broker.auth import Auth
 from cc_agency.broker.routes.red import red_routes
-from cc_agency.broker.routes.nodes import nodes_routes
 
 
 DESCRIPTION = 'CC-Agency Broker.'
@@ -56,6 +55,5 @@ def get_root():
 
 
 red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy)
-nodes_routes(app, mongo, auth)
 
 controller.send_json({'destination': 'scheduler'})
