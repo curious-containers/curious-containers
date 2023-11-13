@@ -13,12 +13,13 @@ from cc_agency.commons.secrets import TrusteeClient
 from cc_agency.commons.cloud_proxy import CloudProxy
 from cc_agency.broker.auth import Auth
 from cc_agency.broker.routes.red import red_routes
+from cc_agency.broker.jwt_token import get_jwt_secret_key
 
 
 DESCRIPTION = 'CC-Agency Broker.'
 
 app = Flask('broker')
-app.config["JWT_SECRET_KEY"] = "super-secret"  # TODO generate random secret key
+app.config["JWT_SECRET_KEY"] = get_jwt_secret_key()
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes=15)
 app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(hours=3)
 
