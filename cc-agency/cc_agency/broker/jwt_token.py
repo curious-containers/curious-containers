@@ -15,6 +15,8 @@ def generate_jwt_secret_key():
 def save_jwt_secret_key(secret_key):
     try:
         with FileLock(JWT_TEMP_FILE_LOCK):
+            if os.path.exists(JWT_TEMP_FILE):
+                return False
             with open(JWT_TEMP_FILE, 'a') as f:
                 f.write(secret_key)
             os.chmod(JWT_TEMP_FILE, 0o640)
