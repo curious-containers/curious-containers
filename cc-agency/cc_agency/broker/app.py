@@ -1,6 +1,5 @@
 import os
 from argparse import ArgumentParser
-from datetime import timedelta
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -13,16 +12,12 @@ from cc_agency.commons.secrets import TrusteeClient
 from cc_agency.commons.cloud_proxy import CloudProxy
 from cc_agency.broker.auth import Auth
 from cc_agency.broker.routes.red import red_routes
-from cc_agency.broker.jwt_token import get_jwt_secret_key
+from cc_agency.broker.jwt_token import configure_jwt
 
 
 DESCRIPTION = 'CC-Agency Broker.'
 
 app = Flask('broker')
-app.config["JWT_SECRET_KEY"] = get_jwt_secret_key()
-app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes=15)
-app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(hours=3)
-
 
 jwt = JWTManager(app)
 cors = CORS(app, supports_credentials=True)
@@ -36,6 +31,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 conf = Conf(args.conf_file)
+configure_jwt(app, conf)
 mongo = Mongo(conf)
 auth = Auth(conf, mongo)
 trustee_client = TrusteeClient(conf)

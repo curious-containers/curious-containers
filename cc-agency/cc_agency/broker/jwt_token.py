@@ -1,11 +1,15 @@
 import secrets
 import os
+from datetime import timedelta
 
 from filelock import FileLock
 
 
 JWT_TEMP_FILE = '/tmp/cc_jwt_secret'
 JWT_TEMP_FILE_LOCK = JWT_TEMP_FILE + '.lock'
+
+DEFAULT_ACCESS_TOKEN_EXPIRES = 900
+DEFAULT_REFRESH_TOKEN_EXPIRES = 43200
 
 
 def generate_jwt_secret_key():
@@ -33,8 +37,8 @@ def read_jwt_file():
         return ''
 
 
-def get_jwt_secret_key():
-    secret_key = read_jwt_file()
+def get_jwt_secret_key(jwt_config):
+    secret_key = jwt_config.get('secret_key', read_jwt_file())
     
     if secret_key == '':
         secret_key = generate_jwt_secret_key()
@@ -44,3 +48,15 @@ def get_jwt_secret_key():
             secret_key = read_jwt_file()
     
     return secret_key
+
+
+def configure_jwt(app, conf):
+    jwt_config = conf.d['broker']['auth'].get('jwt', {})
+    
+    app.config["JWT_SECRET_KEY"] = get_jwt_secret_key(jwt_config)
+    
+    access_token_expires = jwt_config.get('access_token_expires', DEFAULT_ACCESS_TOKEN_EXPIRES)
+    refresh_token_expires = jwt_config.get('refresh_token_expires', DEFAULT_REFRESH_TOKEN_EXPIRES)
+    
+    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(seconds=access_token_expires)
+    app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(seconds=refresh_token_expires)
