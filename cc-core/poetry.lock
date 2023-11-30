@@ -384,13 +384,13 @@ files = [
 
 [[package]]
 name = "red-val"
-version = "9.2.3"
+version = "9.3.0"
 description = "RED-val is part of the Curious Containers project. It provides functionality to implement red clients and red execution engines."
 optional = false
 python-versions = ">=3.7,<4.0"
 files = [
-    {file = "red_val-9.2.3-py3-none-any.whl", hash = "sha256:1954a1c3576102da3f1085228a5b999d1ed5d842763ee9687a9d5d3f3b5b5f3d"},
-    {file = "red_val-9.2.3.tar.gz", hash = "sha256:39e9bb7a8190dec675071bb2a0dac2539ee6a492910e4b78de3013d1c9328f1a"},
+    {file = "red_val-9.3.0-py3-none-any.whl", hash = "sha256:12e8ab813f8fa04fb0a09baa0c07a010c75ac42f4ba0ddadd02b9d0681122839"},
+    {file = "red_val-9.3.0.tar.gz", hash = "sha256:d6f4fff45a9b7496bb7b12f51b13e43a58d721d97266f7f08bffafecf3d075bc"},
 ]
 
 [package.dependencies]
@@ -566,4 +566,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.7"
-content-hash = "ad280565272f7a6d423231e7ad66050b8291142a1f1d6909f6d6fc7876686e37"
+content-hash = "2a465165b5d40c122f03863063e01c17d55de4b7990220c3a508778d9408e55e"
