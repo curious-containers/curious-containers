@@ -1,7 +1,10 @@
 import json
 from time import time
+from functools import wraps
 
-from flask import request
+from flask import request, jsonify, Response
+from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt, get_jwt_identity, \
+    jwt_required, set_access_cookies, current_user
 from red_val.red_validation import red_validation
 from red_val.red_variables import get_variable_keys
 from werkzeug.exceptions import BadRequest, NotFound, InternalServerError
@@ -11,12 +14,16 @@ from cc_core.commons.engines import engine_validation
 from cc_core.commons.red_secrets import get_secret_values, normalize_keys
 from cc_core.commons.exceptions import exception_format
 from cc_core.commons.red_to_restricted_red import convert_red_to_restricted_red
+from cc_core.commons.schemas.engines.container import container_engines
 
 from cc_agency.commons.helper import str_to_bool, create_flask_response, USER_SPECIFIED_STDOUT_KEY, \
     USER_SPECIFIED_STDERR_KEY, get_gridfs_filename, create_file_flask_response, STDOUT_FILE_KEY, STDERR_FILE_KEY
 from cc_agency.commons.secrets import separate_secrets_batch, separate_secrets_experiment
 from cc_agency.commons.db import Mongo
 from cc_agency.broker.auth import Auth
+from cc_agency.version import VERSION as AGENCY_VERSION
+
+from red_val.schemas.red import red_schema
 
 
 def _prepare_red_data(data, user, disable_retry, disable_connector_validation):
@@ -98,7 +105,7 @@ def _prepare_red_data(data, user, disable_retry, disable_connector_validation):
     return experiment, batches, secrets
 
 
-def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
+def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
     """
     Creates the red broker endpoints.
 
@@ -110,6 +117,112 @@ def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
     :param controller: The controller to communicate with the scheduler
     :param trustee_client: The trustee client
     """
+    
+    def jwt_or_basic(func):
+        """
+        A decorator that combines JWT (JSON Web Token) authentication with Basic authentication.
+
+        This decorator is used to protect routes with authentication. It first checks for a valid
+        JWT token in the request headers. If a valid token is found, it allows access to the route.
+        If no JWT token is present, it falls back to Basic authentication using the 'Authorization'
+        header. If valid Basic authentication credentials are provided, it allows access to the route.
+
+        :param func: The function or route to be protected.
+        :type func: callable
+        :return: The decorated function.
+        :rtype: callable
+        """
+        @jwt_required(optional=True)
+        def wrapper(*args, **kwargs):
+            current_user = get_jwt_identity()
+            if current_user:
+                return func(*args, **kwargs)
+            else:
+                return Response('Unauthorized', 401, {'WWW-Authenticate': 'Basic realm="Please fill in username and password"'})
+        return wrapper
+    
+    @app.before_request
+    def authenticate_user():
+        """
+        Authenticate the user before processing a request.
+
+        This function is executed before each request is processed by the application.
+        It checks for Basic authentication credentials in the request headers. If valid
+        credentials are provided, it generates and adds a JWT token to the request's
+        environment, allowing the user to access protected routes.
+
+        :return: None
+        """
+        if request.authorization:
+            user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
+            if user:
+                access_token = create_access_token(identity=user)
+                request.environ['HTTP_AUTHORIZATION'] = f'Bearer {access_token}'
+    
+    @app.route("/login", methods=["POST"])
+    def login():
+        """
+        Authenticate a user and return a JWT access token.
+
+        This route handles user authentication. If valid credentials are provided, it generates
+        and returns a JWT access token in JSON format. If the credentials are invalid, it
+        returns a JSON response indicating unauthorized access.
+
+        :return: JSON response with an access token or an error message.
+        :rtype: Response
+        """
+        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
+        if user is None:
+            return jsonify({"msg": "Bad username or password"}), 401
+        
+        access_token = create_access_token(identity=user)
+        refresh_token = create_refresh_token(identity=user)
+        return jsonify(username=user.username, access_token=access_token, refresh_token=refresh_token)
+    
+    @app.route("/refreshtoken", methods=["POST"])
+    @jwt_required(refresh=True)
+    def refresh():
+        identity = get_jwt_identity()
+        access_token = create_access_token(identity=identity)
+        return jsonify(access_token=access_token)
+    
+    @jwt.user_identity_loader
+    def user_identity_lookup(user):
+        """
+        User identity loader for JWT authentication.
+
+        This function is used to determine the identity of the user when creating a JWT token.
+        It extracts the username from the user object.
+
+        :param user: The user object.
+        :type user: Auth.User
+        :return: The username of the user.
+        :rtype: str
+        """
+        if (type(user) == str):
+            return user
+        else:
+            return user.username
+    
+    @jwt.user_lookup_loader
+    def user_lookup_callback(_jwt_header, jwt_data):
+        """
+        User lookup callback for JWT authentication.
+
+        This function is used to look up a user based on the 'sub' (subject) claim in the JWT data.
+        It retrieves the user from the database based on the username stored in the JWT data.
+
+        :param _jwt_header: The JWT header.
+        :type _jwt_header: dict
+        :param jwt_data: The JWT data containing the 'sub' claim.
+        :type jwt_data: dict
+        :return: The user object.
+        :rtype: Auth.User
+        """
+        username = jwt_data["sub"]
+        db_user = auth._mongo.db['users'].find_one({'username': username})
+        user = Auth.User(username, db_user['is_admin'])
+        return user
 
     @app.errorhandler(BadRequest)
     def bad_request_handler(e):
@@ -127,9 +240,8 @@ def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
         return response, 400
 
     @app.route('/red', methods=['POST'])
+    @jwt_or_basic
     def post_red():
-        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
-
         if not request.json:
             raise BadRequest('Did not send RED data as JSON.')
 
@@ -182,9 +294,9 @@ def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
         if 'cloud' in data and data['cloud'].get('enable'):
             if not cloud_proxy.is_available():
                 raise BadRequest('CC-Cloud is not available.')
-            data = cloud_proxy.complete_cloud_red_data(data, user.username)
+            data = cloud_proxy.complete_cloud_red_data(data, current_user.username)
         
-        experiment, batches, secrets = _prepare_red_data(data, user, disable_retry, disable_connector_validation)
+        experiment, batches, secrets = _prepare_red_data(data, current_user, disable_retry, disable_connector_validation)
 
         response = trustee_client.store(secrets)
         if response['state'] == 'failed':
@@ -200,12 +312,11 @@ def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
 
         controller.send_json({'destination': 'scheduler'})
 
-        return create_flask_response({'experimentId': experiment_id}, auth, user.authentication_cookie)
+        return create_flask_response({'experimentId': experiment_id}, auth, current_user.authentication_cookie)
 
-    @app.route('/batches/<object_id>', methods=['DELETE'])
+    @app.route('/batches/<object_id>', methods=['DELETE'], endpoint='delete_batches')
+    @jwt_or_basic
     def delete_batches(object_id):
-        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
-
         try:
             bson_id = ObjectId(object_id)
         except Exception:
@@ -214,9 +325,9 @@ def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
         match = {'_id': bson_id}
         match_with_state = {'_id': bson_id, 'state': {'$nin': ['succeeded', 'failed', 'cancelled']}}
 
-        if not user.is_admin:
-            match['username'] = user.username
-            match_with_state['username'] = user.username
+        if not current_user.is_admin:
+            match['username'] = current_user.username
+            match_with_state['username'] = current_user.username
 
         o = mongo.db['batches'].find_one(match, {'state': 1})
         if not o:
@@ -245,7 +356,7 @@ def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
 
         controller.send_json({'destination': 'scheduler'})
 
-        return create_flask_response(o, auth, user.authentication_cookie)
+        return create_flask_response(o, auth, current_user.authentication_cookie)
 
     @app.route('/experiments/count', methods=['GET'])
     def get_experiments_count():
@@ -271,10 +382,9 @@ def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
     def get_batches_id(object_id):
         return get_collection_id('batches', object_id)
 
-    @app.route('/batches/<batch_id>/<filename>', methods=['GET'])
+    @app.route('/batches/<batch_id>/<filename>', methods=['GET'], endpoint='get_batches_id_file')
+    @jwt_or_basic
     def get_batches_id_file(batch_id, filename):
-        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
-
         try:
             bson_id = ObjectId(batch_id)
         except Exception:
@@ -282,8 +392,8 @@ def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
 
         match = {'_id': bson_id}
 
-        if not user.is_admin:
-            match['username'] = user.username
+        if not current_user.is_admin:
+            match['username'] = current_user.username
 
         o = mongo.db['batches'].find_one(match)
         if not o:
@@ -298,11 +408,10 @@ def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
         if data is None:
             raise NotFound('Could not find "{}" of batch "{}"'.format(filename, batch_id))
 
-        return create_file_flask_response(data, auth, user.authentication_cookie)
+        return create_file_flask_response(data, auth, current_user.authentication_cookie)
 
+    @jwt_or_basic
     def get_collection_id(collection, object_id):
-        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
-
         try:
             bson_id = ObjectId(object_id)
         except Exception:
@@ -310,19 +419,18 @@ def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
 
         match = {'_id': bson_id}
 
-        if not user.is_admin:
-            match['username'] = user.username
+        if not current_user.is_admin:
+            match['username'] = current_user.username
 
         o = mongo.db[collection].find_one(match)
         if not o:
             raise NotFound('Could not find Object.')
 
         o['_id'] = str(o['_id'])
-        return create_flask_response(o, auth, user.authentication_cookie)
+        return create_flask_response(o, auth, current_user.authentication_cookie)
 
+    @jwt_or_basic
     def get_collection_count(collection):
-        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
-
         username = request.args.get('username', default=None, type=str)
         node = None
         experiment_id = None
@@ -341,8 +449,8 @@ def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
 
         aggregate = []
 
-        if not user.is_admin:
-            aggregate.append({'$match': {'username': user.username}})
+        if not current_user.is_admin:
+            aggregate.append({'$match': {'username': current_user.username}})
 
         match = {}
 
@@ -365,13 +473,12 @@ def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
         cursor = list(cursor)
         
         if not cursor:
-            return create_flask_response({'count': 0}, auth, user.authentication_cookie)
+            return create_flask_response({'count': 0}, auth, current_user.authentication_cookie)
 
-        return create_flask_response(cursor[0], auth, user.authentication_cookie)
+        return create_flask_response(cursor[0], auth, current_user.authentication_cookie)
 
+    @jwt_or_basic
     def get_collection(collection):
-        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
-
         skip = request.args.get('skip', default=None, type=int)
         limit = request.args.get('limit', default=None, type=int)
         username = request.args.get('username', default=None, type=str)
@@ -399,8 +506,8 @@ def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
 
         aggregate = []
 
-        if not user.is_admin:
-            aggregate.append({'$match': {'username': user.username}})
+        if not current_user.is_admin:
+            aggregate.append({'$match': {'username': current_user.username}})
 
         match = {}
 
@@ -451,4 +558,57 @@ def red_routes(app, mongo, auth, controller, trustee_client, cloud_proxy):
             e['_id'] = str(e['_id'])
             result.append(e)
 
-        return create_flask_response(result, auth, user.authentication_cookie)
+        return create_flask_response(result, auth, current_user.authentication_cookie)
+    
+    @app.route('/version', methods=['GET'], endpoint='get_version')
+    @jwt_or_basic
+    def get_version():
+        return create_flask_response({'agencyVersion': AGENCY_VERSION}, auth, current_user.authentication_cookie)
+    
+    @app.route('/schema/red', methods=['GET'])
+    def get_schema():
+        return red_schema, 200
+    
+    @app.route('/schema/engines/container', methods=['GET'])
+    def get_container_engines():
+        return container_engines, 200
+    
+    
+    @app.route('/nodes', methods=['GET'], endpoint='get_nodes')
+    @jwt_or_basic
+    def get_nodes():
+        cursor = mongo.db['nodes'].find()
+
+        nodes = list(cursor)
+        node_names = [node['nodeName'] for node in nodes]
+
+        cursor = mongo.db['batches'].find(
+            {
+                'node': {'$in': node_names},
+                'state': {'$in': ['scheduled', 'processing']}
+            },
+            {'experimentId': 1, 'node': 1}
+        )
+        batches = list(cursor)
+        experiment_ids = list(set([ObjectId(b['experimentId']) for b in batches]))
+
+        cursor = mongo.db['experiments'].find(
+            {'_id': {'$in': experiment_ids}},
+            {'container.settings.ram': 1}
+        )
+        experiments = {str(e['_id']): e for e in cursor}
+
+        for node in nodes:
+            batches_ram = [
+                {
+                    'batchId': str(b['_id']),
+                    'ram': experiments[b['experimentId']]['container']['settings']['ram']
+                }
+                for b in batches
+                if b['node'] == node['nodeName']
+            ]
+            node['currentBatches'] = batches_ram
+            del node['_id']
+
+        return create_flask_response(nodes, auth, current_user.authentication_cookie)
+    

@@ -143,7 +143,12 @@ def run(args):
 
     except Exception as e:
         print_exception(e)
-        result['debugInfo'] = exception_format()
+        
+        formated_exception = exception_format()
+        formated_stderr = stderr_format(cli_stderr)
+        debugInfo = formated_exception + formated_stderr
+        
+        result['debugInfo'] = debugInfo
         result['state'] = 'failed'
     finally:
         # umount directories
@@ -1784,8 +1789,19 @@ class ConnectorManager:
 
 def exception_format():
     exc_text = format_exc()
-    return [_lstrip_quarter(line.replace("'", '').rstrip()) for line in exc_text.split('\n') if line]
+    return format_string_list(exc_text)
 
+
+def stderr_format(err_file):
+    try:
+        with open(err_file) as f:
+            err = f.read()
+        return format_string_list(err)
+    except FileNotFoundError:
+        return []
+
+def format_string_list(str):
+    return [_lstrip_quarter(line.replace("'", '').rstrip()) for line in str.split('\n') if line]
 
 def _lstrip_quarter(s):
     len_s = len(s)
