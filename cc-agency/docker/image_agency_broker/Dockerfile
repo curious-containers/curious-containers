@@ -13,7 +13,7 @@ ADD --chown=root:root ccagency-broker.ini /opt/ccagency/privileged/ccagency-brok
 USER cc
 
 # install agency
-RUN python3 -m venv /home/cc/ccagency-venv && . /home/cc/ccagency-venv/bin/activate && python3 -m pip install cc-agency==9.2.3
+RUN python3 -m venv /home/cc/ccagency-venv && . /home/cc/ccagency-venv/bin/activate && python3 -m pip install cc-agency==9.3.0
 
 # add config file
 RUN mkdir -p /home/cc/.config
