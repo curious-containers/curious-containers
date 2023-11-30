@@ -23,18 +23,18 @@ tests-no-zope = ["cloudpickle", "hypothesis", "mypy (>=1.1.1)", "pympler", "pyte
 
 [[package]]
 name = "cc-core"
-version = "9.2.3"
+version = "9.3.0"
 description = "CC-Core is part of the Curious Containers project. It contains shared code of the CC-FAICE and CC-Agency packages."
 optional = false
 python-versions = ">=3.7,<4.0"
 files = [
-    {file = "cc_core-9.2.3-py3-none-any.whl", hash = "sha256:993aa109a5607683bccd27ba4cd2fa587e3328545259e6b556a2f49e10b1be1a"},
-    {file = "cc_core-9.2.3.tar.gz", hash = "sha256:e1688594a1dee939ea8ee68bc5840c70ae60f3d60abb4d78329d0e27cc50f127"},
+    {file = "cc_core-9.3.0-py3-none-any.whl", hash = "sha256:cabf724a3f383dc932fe5994ea809c1be8f1489c77949d55b42777ebd5de82a4"},
+    {file = "cc_core-9.3.0.tar.gz", hash = "sha256:738a6a299c1318b61db93945c3ed971f0cc84f1415ac4717ca9ffa4108316281"},
 ]
 
 [package.dependencies]
 docker = ">=6.0,<7.0"
-red-val = ">=9.2,<9.3"
+red-val = ">=9.3,<9.4"
 "ruamel.yaml" = ">=0.17,<0.18"
 urllib3 = ">=1.26,<2.0"
 
@@ -535,13 +535,13 @@ files = [
 
 [[package]]
 name = "red-fill"
-version = "9.2.3"
+version = "9.3.0"
 description = "RED-fill is part of the Curious Containers project. It provides functionality to resolve template keys for RED clients."
 optional = false
 python-versions = ">=3.7,<4.0"
 files = [
-    {file = "red_fill-9.2.3-py3-none-any.whl", hash = "sha256:1f5ae5d213cabee1ed94eaae9e26e5fa96e53be3f3049e5095fd414d26fc2daa"},
-    {file = "red_fill-9.2.3.tar.gz", hash = "sha256:b9b7d51daaec34fc9cfa82f648de00b322b005cbe09ed8d0cf71ec02acdc6adc"},
+    {file = "red_fill-9.3.0-py3-none-any.whl", hash = "sha256:9be11d59fc9972fafd906bd7d2d0466b01ab03f316037a4b75c0cb46eb48a7ac"},
+    {file = "red_fill-9.3.0.tar.gz", hash = "sha256:456f0eb0ca1d9c877890546b6b1f034ca570bb35a463afdfa4e360e9b20f4be2"},
 ]
 
 [package.dependencies]
@@ -549,13 +549,13 @@ keyring = ">=23.8,<24.0"
 
 [[package]]
 name = "red-val"
-version = "9.2.3"
+version = "9.3.0"
 description = "RED-val is part of the Curious Containers project. It provides functionality to implement red clients and red execution engines."
 optional = false
 python-versions = ">=3.7,<4.0"
 files = [
-    {file = "red_val-9.2.3-py3-none-any.whl", hash = "sha256:1954a1c3576102da3f1085228a5b999d1ed5d842763ee9687a9d5d3f3b5b5f3d"},
-    {file = "red_val-9.2.3.tar.gz", hash = "sha256:39e9bb7a8190dec675071bb2a0dac2539ee6a492910e4b78de3013d1c9328f1a"},
+    {file = "red_val-9.3.0-py3-none-any.whl", hash = "sha256:12e8ab813f8fa04fb0a09baa0c07a010c75ac42f4ba0ddadd02b9d0681122839"},
+    {file = "red_val-9.3.0.tar.gz", hash = "sha256:d6f4fff45a9b7496bb7b12f51b13e43a58d721d97266f7f08bffafecf3d075bc"},
 ]
 
 [package.dependencies]
@@ -735,4 +735,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.7"
-content-hash = "91e7d8d032ca4ac6abbbde88b0e4b5957f6c3b9069dfd8276a2469c8af4cfae3"
+content-hash = "03a49d3ab5072d3c9d66e54d0bb8c8ff09045dac686ed24f34f9ad4213f90b85"

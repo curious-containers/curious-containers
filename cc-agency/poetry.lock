@@ -23,18 +23,18 @@ tests-no-zope = ["cloudpickle", "hypothesis", "mypy (>=1.1.1)", "pympler", "pyte
 
 [[package]]
 name = "cc-core"
-version = "9.2.3"
+version = "9.3.0"
 description = "CC-Core is part of the Curious Containers project. It contains shared code of the CC-FAICE and CC-Agency packages."
 optional = false
 python-versions = ">=3.7,<4.0"
 files = [
-    {file = "cc_core-9.2.3-py3-none-any.whl", hash = "sha256:993aa109a5607683bccd27ba4cd2fa587e3328545259e6b556a2f49e10b1be1a"},
-    {file = "cc_core-9.2.3.tar.gz", hash = "sha256:e1688594a1dee939ea8ee68bc5840c70ae60f3d60abb4d78329d0e27cc50f127"},
+    {file = "cc_core-9.3.0-py3-none-any.whl", hash = "sha256:cabf724a3f383dc932fe5994ea809c1be8f1489c77949d55b42777ebd5de82a4"},
+    {file = "cc_core-9.3.0.tar.gz", hash = "sha256:738a6a299c1318b61db93945c3ed971f0cc84f1415ac4717ca9ffa4108316281"},
 ]
 
 [package.dependencies]
 docker = ">=6.0,<7.0"
-red-val = ">=9.2,<9.3"
+red-val = ">=9.3,<9.4"
 "ruamel.yaml" = ">=0.17,<0.18"
 urllib3 = ">=1.26,<2.0"
 
@@ -896,13 +896,13 @@ py = {version = "*", markers = "implementation_name == \"pypy\""}
 
 [[package]]
 name = "red-val"
-version = "9.2.3"
+version = "9.3.0"
 description = "RED-val is part of the Curious Containers project. It provides functionality to implement red clients and red execution engines."
 optional = false
 python-versions = ">=3.7,<4.0"
 files = [
-    {file = "red_val-9.2.3-py3-none-any.whl", hash = "sha256:1954a1c3576102da3f1085228a5b999d1ed5d842763ee9687a9d5d3f3b5b5f3d"},
-    {file = "red_val-9.2.3.tar.gz", hash = "sha256:39e9bb7a8190dec675071bb2a0dac2539ee6a492910e4b78de3013d1c9328f1a"},
+    {file = "red_val-9.3.0-py3-none-any.whl", hash = "sha256:12e8ab813f8fa04fb0a09baa0c07a010c75ac42f4ba0ddadd02b9d0681122839"},
+    {file = "red_val-9.3.0.tar.gz", hash = "sha256:d6f4fff45a9b7496bb7b12f51b13e43a58d721d97266f7f08bffafecf3d075bc"},
 ]
 
 [package.dependencies]
@@ -1084,4 +1084,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.7"
-content-hash = "6b3b780e7dc13fd7c4339f90ee2f479eeb9d6d658a59ac6a59d8edba7b2274da"
+content-hash = "5f685bb7afd0835db99a36140f5a206fc17652dc874678ad2f80aa599b02b7a9"
