@@ -9,7 +9,16 @@ conf_schema = {
                     'properties': {
                         'num_login_attempts': {'type': 'integer'},
                         'block_for_seconds': {'type': 'integer'},
-                        'tokens_valid_for_seconds': {'type': 'integer'}
+                        'tokens_valid_for_seconds': {'type': 'integer'},
+                        'jwt': {
+                            'type': 'object',
+                            'properties': {
+                                'secret_key': {'type': 'string'},
+                                'access_token_expires': {'type': 'integer'},
+                                'refresh_token_expires': {'type': 'integer'}
+                            },
+                            'additionalProperties': False,
+                        }
                     },
                     'additionalProperties': False,
                     'required': ['num_login_attempts', 'block_for_seconds', 'tokens_valid_for_seconds']
