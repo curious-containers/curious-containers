@@ -19,6 +19,7 @@ cryptography = "^41.0"
 cc-core = "~9.2"
 urllib3 = "^1.26"
 Werkzeug = "^2.2.3"
+filelock = "^3.12.2"
 
 [tool.poetry.dev-dependencies]
 
