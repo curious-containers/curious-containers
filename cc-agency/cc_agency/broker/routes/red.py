@@ -30,7 +30,7 @@ def _prepare_red_data(data, user, disable_retry, disable_connector_validation):
     timestamp = time()
 
     experiment = {
-        'username': user.username,
+        'user_id': user.id,
         'registrationTime': timestamp,
         'redVersion': data['redVersion'],
         'cli': data['cli'],
@@ -73,7 +73,7 @@ def _prepare_red_data(data, user, disable_retry, disable_connector_validation):
 
     for i, rb in enumerate(raw_batches):
         batch = {
-            'username': user.username,
+            'user_id': user.id,
             'registrationTime': timestamp,
             'state': 'registered',
             'batchesListIndex': i,
@@ -220,8 +220,8 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
         :rtype: Auth.User
         """
         username = jwt_data["sub"]
-        db_user = auth._mongo.db['users'].find_one({'username': username})
-        user = Auth.User(username, db_user['is_admin'])
+        db_user = auth._mongo.find_user_by_name(username)
+        user = Auth.User(username, db_user['is_admin'], db_user['_id'])
         return user
 
     @app.errorhandler(BadRequest)
@@ -302,13 +302,13 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
         if response['state'] == 'failed':
             raise InternalServerError('Trustee service failed:\n{}'.format(response['debug_info']))
 
-        bson_experiment_id = mongo.db['experiments'].insert_one(experiment).inserted_id
+        bson_experiment_id = mongo.add_experiment(experiment).inserted_id
         experiment_id = str(bson_experiment_id)
 
         for batch in batches:
             batch['experimentId'] = experiment_id
         
-        mongo.db['batches'].insert_many(batches)
+        mongo.add_batches(batches)
 
         controller.send_json({'destination': 'scheduler'})
 
@@ -326,14 +326,14 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
         match_with_state = {'_id': bson_id, 'state': {'$nin': ['succeeded', 'failed', 'cancelled']}}
 
         if not current_user.is_admin:
-            match['username'] = current_user.username
-            match_with_state['username'] = current_user.username
+            match['user_id'] = current_user.id
+            match_with_state['user_id'] = current_user.id
 
-        o = mongo.db['batches'].find_one(match, {'state': 1})
+        o = mongo.find_batch_state(match)
         if not o:
             raise NotFound('Could not find Object.')
 
-        mongo.db['batches'].update_one(
+        mongo.update_batch(
             match_with_state,
             {
                 '$set': {
@@ -351,7 +351,7 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
                 }
             })
 
-        o = mongo.db['batches'].find_one(match)
+        o = mongo.find_batch(match)
         o['_id'] = str(o['_id'])
 
         controller.send_json({'destination': 'scheduler'})
@@ -393,9 +393,9 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
         match = {'_id': bson_id}
 
         if not current_user.is_admin:
-            match['username'] = current_user.username
+            match['user_id'] = current_user.id
 
-        o = mongo.db['batches'].find_one(match)
+        o = mongo.find_batch(match)
         if not o:
             raise NotFound('Could not find batch with id "{}".'.format(batch_id))
 
@@ -420,7 +420,7 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
         match = {'_id': bson_id}
 
         if not current_user.is_admin:
-            match['username'] = current_user.username
+            match['user_id'] = current_user.id
 
         o = mongo.db[collection].find_one(match)
         if not o:
@@ -577,12 +577,12 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
     @app.route('/nodes', methods=['GET'], endpoint='get_nodes')
     @jwt_or_basic
     def get_nodes():
-        cursor = mongo.db['nodes'].find()
+        cursor = mongo.find_all_nodes()
 
         nodes = list(cursor)
         node_names = [node['nodeName'] for node in nodes]
 
-        cursor = mongo.db['batches'].find(
+        cursor = mongo.find_batches(
             {
                 'node': {'$in': node_names},
                 'state': {'$in': ['scheduled', 'processing']}
@@ -592,7 +592,7 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
         batches = list(cursor)
         experiment_ids = list(set([ObjectId(b['experimentId']) for b in batches]))
 
-        cursor = mongo.db['experiments'].find(
+        cursor = mongo.find_experiments(
             {'_id': {'$in': experiment_ids}},
             {'container.settings.ram': 1}
         )
