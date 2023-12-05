@@ -1,6 +1,7 @@
 import gridfs
 from gridfs.grid_file import GridOut
 import pymongo
+from bson.objectid import ObjectId
 
 
 class Mongo:
@@ -30,7 +31,7 @@ class Mongo:
         :return: The result of the update operation.
         :rtype: pymongo.results.UpdateResult
         """
-        return self.db['users'].update_one({'username': user.username}, {'$set': user}, upsert=True)
+        return self.db['users'].update_one({'username': user['username']}, {'$set': user}, upsert=True)
     
     def find_user_by_name(self, username: str):
         """
@@ -139,7 +140,7 @@ class Mongo:
         :rtype: pymongo.results.InsertOneResult
         """
         user_id = self.find_user_id_by_name(username)
-        return self.add_token(self, user_id, ip, salt, token, timestamp)
+        return self.add_token(user_id, ip, salt, token, timestamp)
     
     def add_token(self, user_id: str, ip: str, salt: str, token: str, timestamp: float):
         """
@@ -191,7 +192,7 @@ class Mongo:
         :return: A cursor to the tokens for the user and IP.
         :rtype: pymongo.cursor.Cursor
         """
-        return self._mongo.db['tokens'].find(
+        return self.db['tokens'].find(
             {'user_id': user_id, 'ip': ip},
             {'token': 1, 'salt': 1}
         )
@@ -208,7 +209,7 @@ class Mongo:
         :rtype: pymongo.results.DeleteResult
         """
         user_id = self.find_user_id_by_name(username)
-        return self.delete_token_by_username_ip(user_id, ip)
+        return self.delete_token_by_userid_ip(user_id, ip)
     
     def delete_token_by_userid_ip(self, user_id: str, ip: str):
         """
@@ -235,28 +236,249 @@ class Mongo:
         return self.db['tokens'].delete_many({'timestamp': {'$lt': time}})
     
     def add_experiment(self, experiment: dict):
+        """
+        Adds an experiment to the 'experiments' collection in the MongoDB.
+
+        :param experiment: The experiment data to be added.
+        :type experiment: dict
+        :return: The result of the experiment addition.
+        :rtype: pymongo.results.InsertOneResult
+        """
         return self.db['experiments'].insert_one(experiment)
     
+    def find_experiment(self, match: dict, projection: dict = None):
+        """
+        Finds a single experiment in the 'experiments' collection based on the provided match criteria.
+
+        :param match: The criteria to match experiments.
+        :type match: dict
+        :param projection: The fields to include or exclude from the result.
+        :type projection: dict or None
+        :return: The found experiment document or None if not found.
+        :rtype: dict or None
+        """
+        return self.db['experiments'].find_one(match, projection)
+    
+    def find_experiment_by_id(self, id: str, projection: dict = None):
+        """
+        Finds an experiment in the 'experiments' collection by its ID.
+
+        :param id: The ID of the experiment.
+        :type id: str
+        :param projection: The fields to include or exclude from the result.
+        :type projection: dict or None
+        :return: The found experiment document or None if not found.
+        :rtype: dict or None
+        """
+        return self.find_experiment({'_id': ObjectId(id)}, projection)
+    
+    def find_experiments(self, match: dict, projection: dict = None):
+        """
+        Finds experiments in the 'experiments' collection based on the provided match criteria.
+
+        :param match: The criteria to match experiments.
+        :type match: dict
+        :param projection: The fields to include or exclude from the result.
+        :type projection: dict or None
+        :return: A cursor to the matching experiments.
+        :rtype: pymongo.cursor.Cursor
+        """
+        return self.db['experiments'].find(match, projection)
+    
+    def find_destinct_experiment_values(self, key: str):
+        """
+        Finds distinct values for a given key in the 'experiments' collection.
+
+        :param key: The key for which to find distinct values.
+        :type key: str
+        :return: A list of distinct values.
+        :rtype: list
+        """
+        return self.db['experiments'].distinct(key)
+    
+    def update_experiment(self, match: dict, update: dict):
+        """
+        Updates an experiment in the 'experiments' collection based on the provided match criteria.
+
+        :param match: The criteria to match experiments.
+        :type match: dict
+        :param update: The update to apply to matching experiments.
+        :type update: dict
+        :return: The result of the experiment update.
+        :rtype: pymongo.results.UpdateResult
+        """
+        return self.db['experiments'].update_one(match, update)
+    
     def add_batches(self, batches: dict):
+        """
+        Adds multiple batches to the 'batches' collection in the MongoDB.
+
+        :param batches: The batches to be added.
+        :type batches: dict
+        :return: The result of the batch addition.
+        :rtype: pymongo.results.InsertManyResult
+        """
         return self.db['batches'].insert_many(batches)
     
-    def find_batch(self, match: dict):
-        return self.db['batches'].find_one(match)
+    def find_batch(self, match: dict, projection: dict = None):
+        """
+        Finds a single batch in the 'batches' collection based on the provided match criteria.
+
+        :param match: The criteria to match batches.
+        :type match: dict
+        :param projection: The fields to include or exclude from the result.
+        :type projection: dict or None
+        :return: The found batch document or None if not found.
+        :rtype: dict or None
+        """
+        return self.db['batches'].find_one(match, projection)
     
-    def find_batch_state(self, match: dict):
-        return self.db['batches'].find_one(match, {'state': 1})
+    def find_batch_by_id(self, id: str, projection: dict = None):
+        """
+        Finds a batch in the 'batches' collection by its ID.
+
+        :param id: The ID of the batch.
+        :type id: str
+        :param projection: The fields to include or exclude from the result.
+        :type projection: dict or None
+        :return: The found batch document or None if not found.
+        :rtype: dict or None
+        """
+        return self.find_batch({'_id': id}, projection)
     
-    def find_batches(self, match: dict, projection: dict):
+    def find_batches(self, match: dict, projection: dict = None):
+        """
+        Finds batches in the 'batches' collection based on the provided match criteria.
+
+        :param match: The criteria to match batches.
+        :type match: dict
+        :param projection: The fields to include or exclude from the result.
+        :type projection: dict or None
+        :return: A cursor to the matching batches.
+        :rtype: pymongo.cursor.Cursor
+        """
         return self.db['batches'].find(match, projection)
     
+    def count_batches(self, match: dict):
+        """
+        Counts batches in the 'batches' collection based on the provided match criteria.
+
+        :param match: The criteria to match batches.
+        :type match: dict
+        :return: The count of matching batches.
+        :rtype: int
+        """
+        return self.db['batches'].count(match)
+    
+    def aggregate_batches(self, pipeline: list):
+        """
+        Aggregates batches in the 'batches' collection using the provided pipeline.
+
+        :param pipeline: The aggregation pipeline.
+        :type pipeline: list
+        :return: The result of the batch aggregation.
+        :rtype: pymongo.command_cursor.CommandCursor
+        """
+        return self.db['batches'].aggregate(pipeline)
+    
     def update_batch(self, match: dict, update: dict):
+        """
+        Updates a batch in the 'batches' collection based on the provided match criteria.
+
+        :param match: The criteria to match batches.
+        :type match: dict
+        :param update: The update to apply to matching batches.
+        :type update: dict
+        :return: The result of the batch update.
+        :rtype: pymongo.results.UpdateResult
+        """
         return self.db['batches'].update_one(match, update)
     
-    def find_all_nodes(self):
-        return self.db['nodes'].find()
+    def update_batches(self, match: dict, update: dict):
+        """
+        Updates multiple batches in the 'batches' collection based on the provided match criteria.
+
+        :param match: The criteria to match batches.
+        :type match: dict
+        :param update: The update to apply to matching batches.
+        :type update: dict
+        :return: The result of the batch updates.
+        :rtype: pymongo.results.UpdateResult
+        """
+        return self.db['batches'].update_many(match, update)
     
-    def find_experiments(self, match: dict, projection: dict):
-        return self.db['experiments'].find(match, projection)
+    def find_cloud_user(self, user_id: str, projection: dict = None):
+        """
+        Finds a cloud user in the 'cloud_users' collection by user ID.
+
+        :param user_id: The ID of the cloud user.
+        :type user_id: str
+        :param projection: The fields to include or exclude from the result.
+        :type projection: dict or None
+        :return: The found cloud user document or None if not found.
+        :rtype: dict or None
+        """
+        return self.db['cloud_users'].find_one({'user_id': user_id}, projection)
+    
+    def add_node(self, node_name, state: str = None, history: list = [], ram: int = None, cpus: int = None, gpus: int = None):
+        """
+        Adds a node to the 'nodes' collection in the MongoDB.
+
+        :param node_name: The name of the node.
+        :type node_name: str
+        :param state: The state of the node (optional).
+        :type state: str or None
+        :param history: The history of the node (optional).
+        :type history: list
+        :param ram: The RAM capacity of the node in megabytes (optional).
+        :type ram: int or None
+        :param cpus: The number of CPUs in the node (optional).
+        :type cpus: int or None
+        :param gpus: The number of GPUs in the node (optional).
+        :type gpus: int or None
+        :return: The result of the node addition.
+        :rtype: pymongo.results.InsertOneResult
+        """
+        return self.db['nodes'].insert_one({
+            'nodeName': node_name,
+            'state': state,
+            'history': history,
+            'ram': ram,
+            'cpus': cpus,
+            'gpus': gpus
+        })
+    
+    def find_nodes(self, match: dict = {}, projection: dict = None):
+        """
+        Finds nodes in the 'nodes' collection based on the provided match criteria.
+
+        :param match: The criteria to match nodes.
+        :type match: dict
+        :param projection: The fields to include or exclude from the result.
+        :type projection: dict or None
+        :return: A cursor to the matching nodes.
+        :rtype: pymongo.cursor.Cursor
+        """
+        return self.db['nodes'].find(match, projection)
+    
+    def update_node(self, match: dict, update: dict):
+        """
+        Updates a node in the 'nodes' collection based on the provided match criteria.
+
+        :param match: The criteria to match nodes.
+        :type match: dict
+        :param update: The update to apply to matching nodes.
+        :type update: dict
+        :return: The result of the node update.
+        :rtype: pymongo.results.UpdateResult
+        """
+        return self.db['nodes'].update_one(match, update)
+    
+    def drope_nodes(self):
+        """
+        Drops the 'nodes' collection, removing all nodes.
+        """
+        self.db['nodes'].drop()
 
     def write_file(self, filename, content):
         """

@@ -208,10 +208,7 @@ def batch_failure(
 
     bson_id = ObjectId(batch_id)
 
-    batch = mongo.db['batches'].find_one(
-        {'_id': bson_id},
-        {'attempts': 1, 'node': 1, 'experimentId': 1}
-    )
+    batch = mongo.find_batch_by_id(bson_id, {'attempts': 1, 'node': 1, 'experimentId': 1})
 
     if batch is None:
         raise BatchNotFoundException('Batch "{}" could not be found.'.format(batch_id))
@@ -229,10 +226,7 @@ def batch_failure(
     else:
         experiment_id = batch['experimentId']
         bson_experiment_id = ObjectId(experiment_id)
-        experiment = mongo.db['experiments'].find_one(
-            {'_id': bson_experiment_id},
-            {'execution.settings.retryIfFailed': 1}
-        )
+        experiment = mongo.find_experiment_by_id(bson_experiment_id, {'execution.settings.retryIfFailed': 1})
         if not (experiment and experiment.get('execution', {}).get('settings', {}).get('retryIfFailed')):
             new_state = 'failed'
             new_node = node_name
@@ -244,8 +238,7 @@ def batch_failure(
     if current_state is not None:
         update_filter['state'] = current_state
 
-    mongo.db['batches'].update_one(
-        update_filter,
+    mongo.update_batch(update_filter, 
         {
             '$set': {
                 'state': new_state,
@@ -263,7 +256,6 @@ def batch_failure(
             }
         }
     )
-
 
 class BatchNotFoundException(Exception):
     pass

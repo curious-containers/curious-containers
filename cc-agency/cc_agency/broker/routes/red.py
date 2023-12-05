@@ -329,7 +329,7 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
             match['user_id'] = current_user.id
             match_with_state['user_id'] = current_user.id
 
-        o = mongo.find_batch_state(match)
+        o = mongo.find_batch(match, {'state': 1})
         if not o:
             raise NotFound('Could not find Object.')
 
@@ -353,6 +353,7 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
 
         o = mongo.find_batch(match)
         o['_id'] = str(o['_id'])
+        o['user_id'] = str(o['user_id'])
 
         controller.send_json({'destination': 'scheduler'})
 
@@ -427,11 +428,13 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
             raise NotFound('Could not find Object.')
 
         o['_id'] = str(o['_id'])
+        o['user_id'] = str(o['user_id'])
         return create_flask_response(o, auth, current_user.authentication_cookie)
 
     @jwt_or_basic
     def get_collection_count(collection):
         username = request.args.get('username', default=None, type=str)
+        user_id = mongo.find_user_id_by_name(username)
         node = None
         experiment_id = None
         state = None
@@ -450,12 +453,12 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
         aggregate = []
 
         if not current_user.is_admin:
-            aggregate.append({'$match': {'username': current_user.username}})
+            aggregate.append({'$match': {'user_id': current_user.id}})
 
         match = {}
 
-        if username:
-            match['username'] = username
+        if user_id:
+            match['user_id'] = user_id
 
         if node:
             match['node'] = node
@@ -482,6 +485,7 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
         skip = request.args.get('skip', default=None, type=int)
         limit = request.args.get('limit', default=None, type=int)
         username = request.args.get('username', default=None, type=str)
+        user_id = mongo.find_user_id_by_name(username)
         ascending = str_to_bool(request.args.get('ascending', default=None, type=str))
 
         node = None
@@ -507,12 +511,12 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
         aggregate = []
 
         if not current_user.is_admin:
-            aggregate.append({'$match': {'username': current_user.username}})
+            aggregate.append({'$match': {'user_id': current_user.id}})
 
         match = {}
 
-        if username:
-            match['username'] = username
+        if user_id:
+            match['user_id'] = user_id
 
         if node:
             match['node'] = node
@@ -526,7 +530,7 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
         aggregate.append({'$match': match})
 
         aggregate.append({'$project': {
-            'username': 1,
+            'user_id': 1,
             'registrationTime': 1,
             'state': 1,
             'experimentId': 1,
@@ -556,6 +560,7 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
         result = []
         for e in cursor:
             e['_id'] = str(e['_id'])
+            e['user_id'] = str(e['user_id'])
             result.append(e)
 
         return create_flask_response(result, auth, current_user.authentication_cookie)
@@ -577,7 +582,7 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
     @app.route('/nodes', methods=['GET'], endpoint='get_nodes')
     @jwt_or_basic
     def get_nodes():
-        cursor = mongo.find_all_nodes()
+        cursor = mongo.find_nodes()
 
         nodes = list(cursor)
         node_names = [node['nodeName'] for node in nodes]
