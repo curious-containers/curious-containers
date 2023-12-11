@@ -183,17 +183,7 @@ class ClientProxy:
         self._network = node_conf.get('network')
         self._gpu_blacklist = node_conf.get('hardware', {}).get('gpu_blacklist')  # type: List[GPUDevice]
 
-        # create db entry for this node
-        node = {
-            'nodeName': node_name,
-            'state': None,
-            'history': [],
-            'ram': None,
-            'cpus': None,
-            'gpus': None
-        }
-
-        bson_node_id = self._mongo.db['nodes'].insert_one(node).inserted_id
+        bson_node_id = self._mongo.add_node(node_name).inserted_id
         self._node_id = str(bson_node_id)
 
         # init docker client
@@ -253,7 +243,7 @@ class ClientProxy:
         gpus = list(map(lambda gpu_device: gpu_device.to_dict(), self._gpus)) if (self._gpus is not None) else None
 
         bson_node_id = ObjectId(self._node_id)
-        self._mongo.db['nodes'].update_one(
+        self._mongo.update_node(
             {'_id': bson_node_id},
             {
                 '$set': {
@@ -281,7 +271,7 @@ class ClientProxy:
 
         timestamp = time.time()
         bson_node_id = ObjectId(self._node_id)
-        self._mongo.db['nodes'].update_one(
+        self._mongo.update_node(
             {'_id': bson_node_id},
             {
                 '$set': {'state': 'offline'},
@@ -296,7 +286,7 @@ class ClientProxy:
         )
 
         # change state of assigned batches
-        cursor = self._mongo.db['batches'].find(
+        cursor = self._mongo.find_batches(
             {
                 'node': self._node_name,
                 'state': {'$in': ['scheduled', 'processing']}
@@ -383,7 +373,7 @@ class ClientProxy:
         """
         running_containers = self._batch_containers('running')
 
-        cursor = self._mongo.db['batches'].find(
+        cursor = self._mongo.find_batches(
             {
                 '_id': {'$in': [ObjectId(_id) for _id in running_containers]},
                 'state': 'cancelled'
@@ -533,7 +523,7 @@ class ClientProxy:
         """
         exited_containers = self._batch_containers('exited')  # type: Dict[str, Container]
 
-        batch_cursor = self._mongo.db['batches'].find(
+        batch_cursor = self._mongo.find_batches(
             {'_id': {'$in': [ObjectId(_id) for _id in exited_containers]}},
             {'state': 1, STDOUT_FILE_KEY: 1, STDERR_FILE_KEY: 1}
         )
@@ -746,7 +736,7 @@ class ClientProxy:
             batch_failure(self._mongo, batch_id, debug_info, data, batch['state'], docker_stats=docker_stats)
             return
 
-        batch = self._mongo.db['batches'].find_one(
+        batch = self._mongo.find_batch(
             {'_id': bson_batch_id},
             {'attempts': 1, 'node': 1, 'state': 1, USER_SPECIFIED_STDOUT_KEY: 1, USER_SPECIFIED_STDERR_KEY: 1}
         )
@@ -769,7 +759,7 @@ class ClientProxy:
             include_stderr=batch[USER_SPECIFIED_STDERR_KEY]
         )
 
-        self._mongo.db['batches'].update_one(
+        self._mongo.update_batch(
             {
                 '_id': bson_batch_id,
                 'state': 'processing'
@@ -848,7 +838,7 @@ class ClientProxy:
         """
         images_with_execution_time = {}
 
-        for image_url in self._mongo.db.experiments.distinct('container.settings.image.url'):
+        for image_url in self._mongo.find_destinct_experiment_values('container.settings.image.url'):
             if image_url == '':
                 continue
             try:
@@ -864,7 +854,7 @@ class ClientProxy:
                 self._log('Failed to get old docker image "{}".'.format(image_url), e)
                 continue
 
-            latest_experiment = self._mongo.db.experiments.find_one(
+            latest_experiment = self._mongo.find_experiment(
                 {'container.settings.image.url': image_url},
                 sort=[('registrationTime', pymongo.DESCENDING)]
             )
@@ -931,7 +921,7 @@ class ClientProxy:
         # dictionary, that maps docker image authentications to batches, which need this docker image
         image_to_batches = {}  # type: Dict[Tuple, List[Dict]]
 
-        for batch in self._mongo.db['batches'].find(query):
+        for batch in self._mongo.find_batches(query):
             experiment = self._get_experiment_with_secrets(batch['experimentId'])
             batches_with_experiments.append((batch, experiment))
 
@@ -988,10 +978,7 @@ class ClientProxy:
         :raise TrusteeServiceError: If the trustee service is unavailable or the trustee service could not fulfill all
         requested keys
         """
-        experiment = self._mongo.db['experiments'].find_one(
-            {'_id': ObjectId(experiment_id)},
-        )
-
+        experiment = self._mongo.find_experiment_by_id(experiment_id)
         experiment = fill_experiment_secret_keys(self._trustee_client, experiment)
 
         return experiment
@@ -1072,7 +1059,7 @@ class ClientProxy:
         """
         batch_id = str(batch['_id'])
 
-        update_result = self._mongo.db['batches'].update_one(
+        update_result = self._mongo.update_batch(
             {
                 '_id': ObjectId(batch_id),
                 'state': 'scheduled'
@@ -1128,7 +1115,7 @@ class ClientProxy:
         devices = []
         capabilities = []
         security_opt = []
-        if batch['mount']:
+        if batch['mount'] or (batch.get('cloud') and batch['cloud'].get('enable')):
             devices.append('/dev/fuse')
             capabilities.append('SYS_ADMIN')
             security_opt.append('apparmor:unconfined')
@@ -1222,9 +1209,7 @@ class ClientProxy:
 
         experiment_id = batch['experimentId']
 
-        experiment = self._mongo.db['experiments'].find_one(
-            {'_id': ObjectId(experiment_id)}
-        )
+        experiment = self._mongo.find_experiment_by_id(experiment_id)
 
         red_data = {
             'redVersion': experiment['redVersion'],
@@ -1232,7 +1217,9 @@ class ClientProxy:
             'inputs': batch['inputs'],
             'outputs': batch['outputs']
         }
-
+        if 'cloud' in batch:
+            red_data['cloud'] = batch['cloud']
+        
         restricted_red_batches = convert_red_to_restricted_red(red_data)
 
         if len(restricted_red_batches) != 1:
@@ -1241,7 +1228,7 @@ class ClientProxy:
         restricted_red_batch = restricted_red_batches[0]
 
         # update stdout/stderr metadata
-        self._mongo.db['batches'].update_one(
+        self._mongo.update_batch(
             {
                 '_id': ObjectId(batch_id)
             },

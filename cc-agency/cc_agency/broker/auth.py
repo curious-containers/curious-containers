@@ -17,13 +17,14 @@ class Auth:
         """
         Defines a authenticated user
         """
-        def __init__(self, username, is_admin):
+        def __init__(self, username, is_admin, id = None):
             """
             Creates a authenticated user
 
             :param username: The username of the user
             :param is_admin: Whether the user is an admin
             """
+            self.id = id
             self.username = username
             self.authentication_cookie = None
             self.verified_by_credentials = False
@@ -54,7 +55,7 @@ class Auth:
             'salt': salt,
             'is_admin': is_admin
         }
-        self._mongo.db['users'].update_one({'username': username}, {'$set': user}, upsert=True)
+        self._mongo.add_user(user)
     
     def remove_user(self, username):
         self._mongo.db['users'].delete_one({'username': username})
@@ -100,12 +101,12 @@ class Auth:
             else:
                 raise Auth._create_unauthorized(description='Missing Authentication information')
 
-        db_user = self._mongo.db['users'].find_one({'username': username})  # type: dict
+        db_user = self._mongo.find_user_by_name(username)  # type: dict
 
         if not db_user:
             raise Auth._create_unauthorized(description='Could not find user "{}".'.format(username))
 
-        user = Auth.User(username, db_user['is_admin'])
+        user = Auth.User(username, db_user['is_admin'], db_user['_id'])
 
         salt = db_user['salt']
         del db_user['salt']
@@ -142,8 +143,8 @@ class Auth:
         :return: True, if the username is blocked, otherwise False
         :rtype: bool
         """
-        self._mongo.db['block_entries'].delete_many({'timestamp': {'$lt': time() - self._block_for_seconds}})
-        block_entries = list(self._mongo.db['block_entries'].find({'username': username}))
+        self._mongo.delete_block_entries_before_time(time() - self._block_for_seconds)
+        block_entries = list(self._mongo.find_block_entries_by_username(username))
 
         if len(block_entries) > self._num_login_attempts:
             return True
@@ -151,10 +152,7 @@ class Auth:
         return False
 
     def _add_block_entry(self, username):
-        self._mongo.db['block_entries'].insert_one({
-            'username': username,
-            'timestamp': time()
-        })
+        self._mongo.add_block_entry_by_username(username, time())
         print('Unverified login attempt: added block entry!')
 
     def _issue_token(self, username, ip):
@@ -169,18 +167,18 @@ class Auth:
         :rtype: bytes
         """
         # first remove old tokens of this user and this ip
-        self._mongo.db['tokens'].delete_many({'username': username, 'ip': ip})
+        self._mongo.delete_token_by_username_ip(username, ip)
 
         salt = urandom(16)
         kdf = create_kdf(salt)
         token = generate_secret()
-        self._mongo.db['tokens'].insert_one({
-            'username': username,
-            'ip': ip,
-            'salt': salt,
-            'token': kdf.derive(token.encode('utf-8')),
-            'timestamp': time()
-        })
+        self._mongo.add_token_by_username(
+            username,
+            ip,
+            salt,
+            kdf.derive(token.encode('utf-8')),
+            time()
+        )
         return token
 
     def _verify_user_by_cookie(self, username, cookie_token, ip):
@@ -197,16 +195,13 @@ class Auth:
         :rtype: bool
         """
         # delete old tokens
-        self._mongo.db['tokens'].delete_many({'timestamp': {'$lt': time() - self.tokens_valid_for_seconds}})
+        self._mongo.delete_token_before_time(time() - self.tokens_valid_for_seconds)
 
         # get authorization cookie
         if cookie_token is None:
             return False
 
-        cursor = self._mongo.db['tokens'].find(
-            {'username': username, 'ip': ip},
-            {'token': 1, 'salt': 1}
-        )
+        cursor = self._mongo.find_token_by_username(username, ip)
         for c in cursor:
             kdf = create_kdf(c['salt'])
             try:

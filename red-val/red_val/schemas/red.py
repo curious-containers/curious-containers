@@ -122,6 +122,16 @@ red_schema = {
                 }
             },
             'additionalProperties': False
+        },
+        'cloud': {
+            'type': 'object',
+            'properties': {
+                'enable': {'type': 'boolean'},
+                'mountProtocol': {'enum': ['ssh']},
+                'mountDir': {'type': 'string'}
+            },
+            'additionalProperties': False,
+            'required': ['enable', 'mountDir']
         }
     },
     'oneOf': [{
@@ -131,6 +141,7 @@ red_schema = {
             'cli': {'$ref': '#/definitions/cli'},
             'inputs': {'$ref': '#/definitions/inputs'},
             'outputs': {'$ref': '#/definitions/outputs'},
+            'cloud': {'$ref': '#/definitions/cloud'},
             'container': {'$ref': '#/definitions/engine'},
             'execution': {'$ref': '#/definitions/engine'},
             'doc': {'type': 'string'}
@@ -149,6 +160,7 @@ red_schema = {
                     'properties': {
                         'inputs': {'$ref': '#/definitions/inputs'},
                         'outputs': {'$ref': '#/definitions/outputs'},
+                        'cloud': {'$ref': '#/definitions/cloud'},
                         'doc': {'type': 'string'}
                     },
                     'additionalProperties': False,

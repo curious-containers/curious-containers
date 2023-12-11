@@ -40,6 +40,7 @@ def run(conf_file):
     password = getpass('Password: ')
     if not password:
         print('ABORT: password must not be empty.')
+        exit(1)
 
     is_admin = input('Grant admin rights [y/N]: ')
     is_admin = is_admin.lower()

@@ -95,6 +95,9 @@ def run(args):
         result['command'] = base_command
         cli_arguments = get_cli_arguments(restricted_red_data['cli']['inputs'])
         command = generate_command(base_command, cli_arguments, restricted_red_data)
+        
+        # mount cc-cloud
+        mount_cloud(restricted_red_data.get('cloud'))
 
         # import, validate and execute connectors
         inputs = restricted_red_data.get('inputs')
@@ -140,7 +143,12 @@ def run(args):
 
     except Exception as e:
         print_exception(e)
-        result['debugInfo'] = exception_format()
+        
+        formated_exception = exception_format()
+        formated_stderr = stderr_format(cli_stderr)
+        debugInfo = formated_exception + formated_stderr
+        
+        result['debugInfo'] = debugInfo
         result['state'] = 'failed'
     finally:
         # umount directories
@@ -225,6 +233,40 @@ def ensure_directory(d):
     # check write permissions
     if not is_directory_writable(d):
         raise PermissionError('Directory "{}" is not writable.'.format(d))
+    
+
+def mount_cloud(cloud):
+    """
+    Mount the remote cc-cloud directory using SSHFS.
+
+    :param cloud: A dictionary containing cloud configuration details
+    :type cloud: dict
+    :raise OSError: If there is an error during the mounting process or when updating the known_hosts file.
+    """
+    if cloud and cloud.get('enable'):
+        disableStrictHostKeyChecking = ''
+        if cloud['disableStrictHostKeyChecking']:
+            disableStrictHostKeyChecking = '-o StrictHostKeyChecking=no'
+        else:
+            append_known_host(cloud['host'], cloud['publicsshKey'])
+        os.system(f"echo {cloud['auth']['password']} | sshfs -p {cloud['auth']['sshPort']} -o sshfs_sync -o password_stdin {disableStrictHostKeyChecking} {cloud['auth']['ssh_user']}@{cloud['host']}:/{cloud['upload_directory_name']} {cloud['mountDir']}")
+
+
+def append_known_host(host, public_key):
+    """
+    Append a known host entry to the SSH known_hosts file.
+
+    :param host: The hostname or IP address of the remote host.
+    :type host: str
+    :param public_key: The public key associated with the remote host.
+    :type host: str
+    :raise OSError: If there is an error while creating or writing to the known_hosts file.
+    """
+    known_hosts_path = os.path.expanduser('~/.ssh/known_hosts')
+    known_host_entry = f"{host} {public_key}\n"
+    os.makedirs(os.path.dirname(known_hosts_path), exist_ok=True)
+    with open(known_hosts_path, 'a') as known_hosts_file:
+        known_hosts_file.write(known_host_entry)
 
 
 def resolve_connector_cli_version(connector_command, connector_cli_version_cache):
@@ -1747,8 +1789,19 @@ class ConnectorManager:
 
 def exception_format():
     exc_text = format_exc()
-    return [_lstrip_quarter(line.replace("'", '').rstrip()) for line in exc_text.split('\n') if line]
+    return format_string_list(exc_text)
 
+
+def stderr_format(err_file):
+    try:
+        with open(err_file) as f:
+            err = f.read()
+        return format_string_list(err)
+    except FileNotFoundError:
+        return []
+
+def format_string_list(str):
+    return [_lstrip_quarter(line.replace("'", '').rstrip()) for line in str.split('\n') if line]
 
 def _lstrip_quarter(s):
     len_s = len(s)
