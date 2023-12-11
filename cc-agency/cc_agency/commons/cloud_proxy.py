@@ -81,16 +81,16 @@ class CloudProxy():
                     return False
         return True
     
-    def create_cloud_user(self, username):
+    def create_cloud_user(self, user_id):
         """
         Creates a cloud user for cc-cloud.
 
-        :param username: The username of the cloud user to create.
-        :type username: str
+        :param user_id: The user ID of the cloud user to create.
+        :type user_id: str
         :return: True if the user was created successfully, False otherwise.
         :rtype: bool
         """        
-        parameter = f"username={username}"
+        parameter = f"user_id={user_id}"
         url = f"{self.internal_url.rstrip('/')}/{self.CREATE_USER_ENDPOINT}?{parameter}"
         
         response = requests.get(
@@ -100,19 +100,19 @@ class CloudProxy():
         )
         return response.ok
     
-    def complete_cloud_red_data(self, red_data, username):
+    def complete_cloud_red_data(self, red_data, user_id):
         """
         Completes the cc-cloud related red data in the provided data dictionary.
 
         :param red_data: The data dictionary to complete with cloud-related information.
         :type red_data: dict
-        :param username: The username associated with the cloud data.
-        :type username: str
+        :param user_id: The user ID associated with the cloud data.
+        :type user_id: str
         :return: The updated red data dictionary.
         :rtype: dict
         :raise InternalServerError: If the cloud user cannot be retrieved from the database.
         """
-        cloud_user = self.mongo.db['cloud_users'].find_one({'username': username})
+        cloud_user = self.mongo.find_cloud_user(user_id)
         if cloud_user is None:
             raise InternalServerError('Cloud service failed. Could not retrieve cloud user.')
         

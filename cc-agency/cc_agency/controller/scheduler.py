@@ -51,7 +51,7 @@ class Scheduler:
         self._mongo = mongo
         self._trustee_client = trustee_client
 
-        mongo.db['nodes'].drop()
+        mongo.drope_nodes()
 
         self._scheduling_event = Event()
         self._voiding_event = Event()
@@ -76,7 +76,7 @@ class Scheduler:
             self._notification_event.clear()
 
             # batches
-            cursor = self._mongo.db['batches'].find(
+            cursor = self._mongo.find_batches(
                 {
                     'state': {'$in': ['succeeded', 'failed', 'cancelled']},
                     'notificationsSent': False
@@ -96,7 +96,7 @@ class Scheduler:
                     'state': batch['state']
                 })
 
-            self._mongo.db['batches'].update_many(
+            self._mongo.update_batches(
                 {'_id': {'$in': bson_ids}},
                 {'$set': {'notificationsSent': True}}
             )
@@ -125,7 +125,7 @@ class Scheduler:
             self._voiding_event.clear()
 
             # batches
-            cursor = self._mongo.db['batches'].find(
+            cursor = self._mongo.find_batches(
                 {
                     'state': {'$in': ['succeeded', 'failed', 'cancelled']},
                     'protectedKeysVoided': False
@@ -138,10 +138,10 @@ class Scheduler:
                 batch_secret_keys = get_batch_secret_keys(batch)
                 self._trustee_client.delete(batch_secret_keys)
 
-                self._mongo.db['batches'].update_one({'_id': bson_id}, {'$set': {'protectedKeysVoided': True}})
+                self._mongo.update_batch({'_id': bson_id}, {'$set': {'protectedKeysVoided': True}})
 
             # experiments
-            cursor = self._mongo.db['experiments'].find(
+            cursor = self._mongo.find_experiments(
                 {
                     'protectedKeysVoided': False
                 }
@@ -151,9 +151,9 @@ class Scheduler:
                 bson_id = experiment['_id']
                 experiment_id = str(bson_id)
 
-                all_count = self._mongo.db['batches'].count({'experimentId': experiment_id})
+                all_count = self._mongo.count_batches({'experimentId': experiment_id})
 
-                finished_count = self._mongo.db['batches'].count({
+                finished_count = self._mongo.count_batches({
                     'experimentId': experiment_id,
                     'state': {'$in': ['succeeded', 'failed', 'cancelled']}
                 })
@@ -162,7 +162,7 @@ class Scheduler:
                     experiment_secret_keys = get_experiment_secret_keys(experiment)
                     self._trustee_client.delete(experiment_secret_keys)
 
-                    self._mongo.db['experiments'].update_one({'_id': bson_id}, {'$set': {'protectedKeysVoided': True}})
+                    self._mongo.update_experiment({'_id': bson_id}, {'$set': {'protectedKeysVoided': True}})
 
     def _scheduling_loop(self):
         while True:
@@ -256,7 +256,7 @@ class Scheduler:
         :return: a list of complete nodes, which are currently present in the cluster.
         :rtype: List[CompleteNode]
         """
-        cursor = self._mongo.db['nodes'].find(
+        cursor = self._mongo.find_nodes(
             {},
             {'state': 1, 'ram': 1, 'nodeName': 1}
         )
@@ -264,7 +264,7 @@ class Scheduler:
         nodes = list(cursor)
         node_names = [node['nodeName'] for node in nodes]
 
-        cursor = self._mongo.db['batches'].find(
+        cursor = self._mongo.find_batches(
             {
                 'node': {'$in': node_names},
                 'state': {'$in': ['scheduled', 'processing']}},
@@ -273,7 +273,7 @@ class Scheduler:
         batches = list(cursor)
         experiment_ids = list(set([ObjectId(b['experimentId']) for b in batches]))
 
-        cursor = self._mongo.db['experiments'].find(
+        cursor = self._mongo.find_experiments(
             {'_id': {'$in': experiment_ids}},
             {'container.settings.ram': 1}
         )
@@ -474,7 +474,7 @@ class Scheduler:
         if experiment_id in batch_count_cache:
             batch_count = batch_count_cache[experiment_id]
         else:
-            batch_count = self._mongo.db['batches'].count({
+            batch_count = self._mongo.count_batches({
                 'experimentId': experiment_id,
                 'state': {'$in': ['scheduled', 'processing']}
             })
@@ -590,7 +590,7 @@ class Scheduler:
             return None
 
         # update batch data
-        update_result = self._mongo.db['batches'].update_one(
+        update_result = self._mongo.update_batch(
             {'_id': next_batch['_id'], 'state': next_batch['state']},
             {
                 '$set': {
@@ -632,8 +632,8 @@ class Scheduler:
         :param experiment_id: The experiment id to resolve.
         :return: The experiment as dictionary with filled template values.
         """
-        experiment = self._mongo.db['experiments'].find_one(
-            {'_id': ObjectId(experiment_id)},
+        experiment = self._mongo.find_experiment_by_id(
+            experiment_id,
             {'container.settings': 1, 'execution.settings': 1}
         )
 
@@ -642,7 +642,7 @@ class Scheduler:
         return experiment
 
     def _fifo(self):
-        cursor = self._mongo.db['batches'].aggregate([
+        cursor = self._mongo.aggregate_batches([
             {'$match': {'state': 'registered'}},
             {'$sort': {'registrationTime': 1}},
             {'$project': {'experimentId': 1, 'inputs': 1, 'outputs': 1, 'cloud': 1, 'state': 1}}

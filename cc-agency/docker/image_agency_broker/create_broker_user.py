@@ -21,6 +21,6 @@ user = {
     'salt': salt,
     'is_admin': True,
 }
-mongo.db['users'].update_one({'username': username}, {'$set': user}, upsert=True)
+mongo.add_user(user)
 
 print('created broker user')
