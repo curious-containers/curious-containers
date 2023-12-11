@@ -58,6 +58,9 @@ class Mongo:
             return user['_id']
         return None
     
+    def delete_user(self, username):
+        self.db['users'].delete_one({'username': username})
+    
     def add_block_entry_by_username(self, username: str, time: float):
         """
         Adds a block entry for a user with the given username.

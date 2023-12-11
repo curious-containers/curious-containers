@@ -47,6 +47,9 @@ class Auth:
         self._mongo = mongo
 
     def create_user(self, username, password, is_admin):
+        if not username:
+            return False
+        
         salt = urandom(16)
         kdf = create_kdf(salt)
         user = {
@@ -56,12 +59,14 @@ class Auth:
             'is_admin': is_admin
         }
         self._mongo.add_user(user)
+        
+        return True
     
     def remove_user(self, username):
-        self._mongo.db['users'].delete_one({'username': username})
+        self._mongo.delete_user(username)
     
     def set_user_password(self, username, password):
-        user = self._mongo.db['users'].find_one({'username': username})
+        user = self._mongo.find_user_by_name(username)
         self.create_user(username, password, user['is_admin'])
 
     @staticmethod
