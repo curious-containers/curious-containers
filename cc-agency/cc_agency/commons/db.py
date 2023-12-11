@@ -58,8 +58,16 @@ class Mongo:
             return user['_id']
         return None
     
-    def delete_user(self, username):
-        self.db['users'].delete_one({'username': username})
+    def delete_user(self, username: str):
+        """
+        Deletes a user from the 'users' collection based on the provided username.
+
+        :param username: The username of the user to be deleted.
+        :type username: str
+        :return: The result of the user deletion operation.
+        :rtype: pymongo.results.DeleteResult
+        """
+        return self.db['users'].delete_one({'username': username})
     
     def add_block_entry_by_username(self, username: str, time: float):
         """
