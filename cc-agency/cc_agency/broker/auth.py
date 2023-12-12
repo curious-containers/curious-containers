@@ -68,6 +68,14 @@ class Auth:
     def set_user_password(self, username, password):
         user = self._mongo.find_user_by_name(username)
         self.create_user(username, password, user['is_admin'])
+    
+    def rename_user(self, old_username, new_username):
+        if not new_username or self._mongo.find_user_by_name(new_username) is not None:
+            return False
+        
+        result = self._mongo.rename_user(old_username, new_username)
+        return result.modified_count >= 1
+        
 
     @staticmethod
     def _create_unauthorized(description, realm=DEFAULT_REALM):

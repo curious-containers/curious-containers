@@ -620,7 +620,7 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
         return create_flask_response(nodes, auth, current_user.authentication_cookie)
     
     
-    @app.route('/admin/create_user', methods=['GET'], endpoint='create_user')
+    @app.route('/admin/create_user', methods=['PUT'], endpoint='create_user')
     @jwt_or_basic
     def create_user():
         user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
@@ -628,44 +628,59 @@ def red_routes(app, jwt, mongo, auth, controller, trustee_client, cloud_proxy):
         create_username = request.args.get('username')
         create_password = request.args.get('password', random_password)
         
-        response_string = 'not authorized'
         if user.is_admin:
             if auth.create_user(create_username, create_password, False):
-                response_string = 'ok'
+                return create_flask_response('ok', auth, user.authentication_cookie)
             else:
-                response_string = 'username can not be empty'
-        
-        return create_flask_response(response_string, auth, user.authentication_cookie)
+                Auth._create_unauthorized(description='Username is not valid')
+                
+        raise Auth._create_unauthorized(description='Not Authorized')
     
     
-    @app.route('/admin/remove_user', methods=['GET'], endpoint='remove_user')
+    @app.route('/admin/remove_user', methods=['DELETE'], endpoint='remove_user')
     @jwt_or_basic
     def remove_user():
         user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
         remove_username = request.args.get('username')
         
-        response_string = 'not authorized'
         if user.is_admin:
             auth.remove_user(remove_username)
-            response_string = 'ok'
+            return create_flask_response('ok', auth, user.authentication_cookie)
         
-        return create_flask_response(response_string, auth, user.authentication_cookie)
+        raise Auth._create_unauthorized(description='Not Authorized')
     
     
-    @app.route('/admin/set_password', methods=['GET'], endpoint='set_password')
+    @app.route('/admin/set_password', methods=['PUT'], endpoint='set_password')
     @jwt_or_basic
     def set_password():
         user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
         ch_username = request.args.get('username')
         ch_password = request.args.get('password')
         
-        response_string = 'not authorized'
-        if user.is_admin:
-            try:
-                auth.set_user_password(ch_username, ch_password)
-                response_string = 'ok'
-            except TypeError:
-                response_string = f"user '{ch_username}' does not exist"
+        if ch_username != user.username and not user.is_admin:
+            raise Auth._create_unauthorized(description='Not Authorized')
         
-        return create_flask_response(response_string, auth, user.authentication_cookie)
+        try:
+            auth.set_user_password(ch_username, ch_password)
+            return create_flask_response('ok', auth, user.authentication_cookie)
+        except TypeError:
+            Auth._create_unauthorized(description='Could not find user "{}".'.format(ch_username))
+        
+        raise Auth._create_unauthorized(description='Not Authorized')
+    
+    
+    @app.route('/admin/change_username', methods=['PUT'], endpoint='change_username')
+    @jwt_or_basic
+    def change_username():
+        user = auth.verify_user(request.authorization, request.cookies, request.remote_addr)
+        old_username = request.args.get('username', user.username)
+        new_username = request.args.get('new_name')
+        
+        if old_username != user.username and not user.is_admin:
+            raise Auth._create_unauthorized(description='Not Authorized')
+        
+        if auth.rename_user(old_username, new_username):
+            return create_flask_response('ok', auth, user.authentication_cookie)
+        else:
+            raise Auth._create_unauthorized(description='Could not rename user with username {}'.format(old_username))
     

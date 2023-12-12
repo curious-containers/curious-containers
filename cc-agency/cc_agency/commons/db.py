@@ -58,6 +58,19 @@ class Mongo:
             return user['_id']
         return None
     
+    def rename_user(self, old_username: str, new_username: str):
+        """
+        Renames a user in the 'users' collection by username.
+
+        :param old_username: The current username of the user to be renamed.
+        :type old_username: str
+        :param new_username: The new username to assign to the user.
+        :type new_username: str
+        :return: The result of the user renaming operation.
+        :rtype: pymongo.results.UpdateResult
+        """
+        return self.db['users'].update_one({'username': old_username}, {'$set': {'username': new_username}}, upsert=True)
+    
     def delete_user(self, username: str):
         """
         Deletes a user from the 'users' collection based on the provided username.
